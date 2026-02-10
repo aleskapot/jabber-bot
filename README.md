@@ -264,6 +264,316 @@ When using the Docker monitoring stack:
 }
 ```
 
+## 🔗 n8n Integration
+
+[Jabber Bot](https://github.com/your-org/jabber-bot) integrates seamlessly with [n8n](https://n8n.io/) for powerful workflow automation. Use n8n to create complex XMPP-based workflows, notifications, and automated responses.
+
+### Quick Setup
+
+1. **Install n8n** (if not already installed):
+   ```bash
+   # Docker (recommended)
+   docker run -it --rm \
+     --name n8n \
+     -p 5678:5678 \
+     n8nio/n8n
+   
+   # Or npm
+   npm install n8n -g
+   n8n start
+   ```
+
+2. **Configure Jabber Bot** with webhook URL pointing to n8n:
+   ```yaml
+   webhook:
+     url: "http://n8n:5678/webhook/jabber-incoming"
+   ```
+
+3. **Start n8n**: Open http://localhost:5678 in your browser
+
+### Basic n8n Workflow Examples
+
+#### 1. XMPP Message Forwarding
+
+Create a simple workflow that forwards incoming XMPP messages to Slack:
+
+```javascript
+// n8n Webhook Node (POST /webhook/jabber-incoming)
+// Trigger: HTTP Request Node (POST /api/v1/send)
+
+// Incoming webhook data structure:
+{
+  "from": "user@example.com",
+  "body": "Hello!",
+  "timestamp": "2023-12-01T12:00:00Z"
+}
+
+// Slack notification:
+{
+  "channel": "#xmpp-alerts",
+  "text": "New XMPP message from {{$json.from}}: {{$json.body}}"
+}
+```
+
+#### 2. Automated Response Workflow
+
+Create an automated response system based on message content:
+
+**Flow**: XMPP Message → Content Check → Conditional Response → Send Reply
+
+```javascript
+// Function Node for content analysis
+const messages = [
+  {
+    condition: msg => msg.body.toLowerCase().includes('hello'),
+    response: "Hello! I'm an automated bot. How can I help you?"
+  },
+  {
+    condition: msg => msg.body.toLowerCase().includes('status'),
+    response: "System status: All operational ✅"
+  },
+  {
+    condition: msg => msg.body.toLowerCase().includes('help'),
+    response: "Available commands: hello, status, help"
+  }
+];
+
+const matchedMessage = messages.find(msg => msg.condition($input.first()));
+const response = matchedMessage ? matchedMessage.response : "I didn't understand that. Try 'help'.";
+
+return [{ json: { to: $input.first().from, body: response } }];
+```
+
+#### 3. Multi-Channel Broadcasting
+
+Broadcast XMPP messages to multiple platforms:
+
+```javascript
+// After XMPP webhook triggers:
+const message = $input.first().body;
+const sender = $input.first().from;
+
+// Send to Discord
+await axios.post('https://discord.com/api/webhooks/YOUR_WEBHOOK', {
+  content: `📧 XMPP from ${sender}: ${message}`
+});
+
+// Send to Telegram
+await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+  chat_id: TELEGRAM_CHAT_ID,
+  text: `📧 XMPP from ${sender}: ${message}`
+});
+
+// Send email (optional)
+await axios.post('https://api.sendgrid.com/v3/mail/send', {
+  personalizations: [{
+    to: [{ email: 'admin@example.com' }],
+    subject: 'New XMPP Message'
+  }],
+  from: { email: 'bot@example.com' },
+  content: [{
+    type: 'text/plain',
+    value: `From: ${sender}\nMessage: ${message}`
+  }]
+});
+```
+
+### n8n Node Configuration
+
+#### HTTP Request Node (Send XMPP Message)
+
+```json
+{
+  "method": "POST",
+  "url": "http://jabber-bot:8080/api/v1/send",
+  "headers": {
+    "Content-Type": "application/json",
+    "API-Key": "YOUR_JABBER_BOT_API_KEY"
+  },
+  "body": {
+    "to": "={{$json.to}}",
+    "body": "={{$json.body}}",
+    "type": "chat"
+  }
+}
+```
+
+#### Webhook Node (Receive XMPP Messages)
+
+```json
+{
+  "path": "jabber-incoming",
+  "httpMethod": "POST",
+  "responseMode": "responseNode",
+  "options": {
+    "rawBody": true
+  }
+}
+```
+
+### Advanced Workflows
+
+#### 1. Message Routing by Content Type
+
+```javascript
+// Function Node - Message Router
+const message = $input.first().body.toLowerCase();
+const sender = $input.first().from;
+
+let route;
+
+if (message.includes('urgent') || message.includes('emergency')) {
+  route = 'urgent';
+} else if (message.includes('meeting') || message.includes('schedule')) {
+  route = 'scheduling';
+} else if (message.includes('invoice') || message.includes('payment')) {
+  route = 'billing';
+} else {
+  route = 'general';
+}
+
+return [{
+  json: {
+    from: sender,
+    body: $input.first().body,
+    route: route,
+    timestamp: new Date().toISOString()
+  }
+}];
+```
+
+#### 2. Database Integration
+
+Store and retrieve conversation history:
+
+```javascript
+// Save to database (SQLite, PostgreSQL, etc.)
+const dbMessage = {
+  id: crypto.randomUUID(),
+  from: $input.first().from,
+  body: $input.first().body,
+  timestamp: new Date().toISOString(),
+  processed: false
+};
+
+// Insert into database
+await db.insert('xmpp_messages', dbMessage);
+
+return [{ json: { message: "Saved to database", id: dbMessage.id } }];
+```
+
+#### 3. AI-Powered Responses
+
+Integrate with OpenAI/Claude for intelligent responses:
+
+```javascript
+// OpenAI Integration Node
+const openai = require('openai');
+const client = new openai.OpenAI({ apiKey: YOUR_OPENAI_KEY });
+
+const response = await client.chat.completions.create({
+  model: "gpt-3.5-turbo",
+  messages: [
+    {
+      role: "system",
+      content: "You are a helpful XMPP bot assistant. Be concise and friendly."
+    },
+    {
+      role: "user",
+      content: $input.first().body
+    }
+  ],
+  max_tokens: 150
+});
+
+const reply = response.choices[0].message.content;
+
+return [{ 
+  json: { 
+    to: $input.first().from, 
+    body: reply 
+  } 
+}];
+```
+
+### n8n Cron Jobs for XMPP
+
+#### Scheduled Announcements
+
+```javascript
+// Cron Node: "0 9 * * 1-5" (Every weekday at 9 AM)
+const announcement = `☀️ Good morning! Today's reminders:
+• Standup meeting at 10 AM
+• Code review deadline: 3 PM
+• Deploy window: 6-8 PM`;
+
+return [{
+  json: {
+    to: "team-chat@conference.example.com",
+    body: announcement
+  }
+}];
+```
+
+#### Health Check Notifications
+
+```javascript
+// Check Jabber Bot health
+const healthCheck = await axios.get('http://jabber-bot:8080/api/v1/health');
+
+if (healthCheck.data.status !== 'ok') {
+  // Send alert
+  await axios.post('http://jabber-bot:8080/api/v1/send', {
+    to: 'admin@example.com',
+    body: '⚠️ Jabber Bot health check failed! Please check the service.'
+  });
+}
+```
+
+### Environment Variables for n8n
+
+```bash
+# n8n Configuration
+N8N_BASIC_AUTH_ACTIVE=true
+N8N_BASIC_AUTH_USER=admin
+N8N_BASIC_AUTH_PASSWORD=your-secure-password
+
+# XMPP Bot Integration
+JABBER_BOT_API_URL=http://jabber-bot:8080
+JABBER_BOT_API_KEY=your-api-key
+
+# External Services
+TELEGRAM_BOT_TOKEN=your-telegram-bot-token
+TELEGRAM_CHAT_ID=your-chat-id
+DISCORD_WEBHOOK_URL=your-discord-webhook
+OPENAI_API_KEY=your-openai-key
+SENDGRID_API_KEY=your-sendgrid-key
+```
+
+### Best Practices
+
+1. **Error Handling**: Always include error handling in n8n workflows
+2. **Rate Limiting**: Implement delays between API calls to avoid overwhelming services
+3. **Security**: Store sensitive keys in n8n credentials, not in workflow JSON
+4. **Logging**: Use n8n's built-in execution logs to debug workflows
+5. **Testing**: Test workflows with test webhooks before connecting to production XMPP
+
+### Troubleshooting
+
+**Common Issues:**
+- **Webhook not triggered**: Check n8n URL and Jabber Bot webhook configuration
+- **API Authentication**: Verify API key in HTTP Request nodes
+- **Message format**: Ensure JSON payload matches Jabber Bot API format
+- **Network connectivity**: Ensure n8n can reach Jabber Bot API endpoints
+
+**Debug Tips:**
+- Use n8n's "Execute Workflow" feature with test data
+- Check Jabber Bot logs for webhook delivery status
+- Monitor n8n execution logs for errors
+- Test API endpoints with curl before creating workflows
+
+---
+
 ## 🌐 Language Examples
 
 ### Python
