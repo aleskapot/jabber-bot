@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"jabber-bot/internal/models"
-	"jabber-bot/internal/xmpp"
 
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
@@ -13,8 +12,9 @@ import (
 
 // handleSendMessage handles POST /api/v1/send
 func (s *Server) handleSendMessage(c *fiber.Ctx) error {
+	//goland:noinspection DuplicatedCode
 	logger := c.Locals("logger").(*zap.Logger)
-	manager := c.Locals("manager").(*xmpp.Manager)
+	manager := c.Locals("manager").(XMPPManagerInterface)
 
 	// Parse request body
 	var req models.SendMessageRequest
@@ -79,7 +79,7 @@ func (s *Server) handleSendMessage(c *fiber.Ctx) error {
 // handleSendMUCMessage handles POST /api/v1/send-muc
 func (s *Server) handleSendMUCMessage(c *fiber.Ctx) error {
 	logger := c.Locals("logger").(*zap.Logger)
-	manager := c.Locals("manager").(*xmpp.Manager)
+	manager := c.Locals("manager").(XMPPManagerInterface)
 
 	// Parse request body
 	var req models.SendMUCMessageRequest
@@ -144,7 +144,7 @@ func (s *Server) handleSendMUCMessage(c *fiber.Ctx) error {
 // handleStatus handles GET /api/v1/status
 func (s *Server) handleStatus(c *fiber.Ctx) error {
 	logger := c.Locals("logger").(*zap.Logger)
-	manager := c.Locals("manager").(*xmpp.Manager)
+	manager := c.Locals("manager").(XMPPManagerInterface)
 
 	logger.Debug("Status requested",
 		zap.String("request_id", c.GetRespHeader("X-Request-ID")),
@@ -188,7 +188,7 @@ func (s *Server) handleWebhookStatus(c *fiber.Ctx) error {
 
 // handleHealth handles GET /api/v1/health
 func (s *Server) handleHealth(c *fiber.Ctx) error {
-	manager := c.Locals("manager").(*xmpp.Manager)
+	manager := c.Locals("manager").(XMPPManagerInterface)
 
 	// Simple health check
 	healthy := true

@@ -15,17 +15,26 @@ import (
 	"go.uber.org/zap"
 )
 
+// XMPPManagerInterface defines the interface for XMPP manager operations
+type XMPPManagerInterface interface {
+	SendMessage(to, body, messageType string) error
+	SendMUCMessage(room, body, subject string) error
+	IsConnected() bool
+	GetDefaultClient() *xmpp.Client
+	GetWebhookChannel() <-chan models.Message
+}
+
 // Server represents the API server
 type Server struct {
 	app        *fiber.App
 	config     *config.Config
 	logger     *zap.Logger
-	manager    *xmpp.Manager
+	manager    XMPPManagerInterface
 	actualPort int
 }
 
 // NewServer creates new API server
-func NewServer(cfg *config.Config, logger *zap.Logger, manager *xmpp.Manager) *Server {
+func NewServer(cfg *config.Config, logger *zap.Logger, manager XMPPManagerInterface) *Server {
 	app := fiber.New(fiber.Config{
 		ErrorHandler: errorHandler,
 	})

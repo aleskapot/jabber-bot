@@ -6,21 +6,25 @@ import (
 
 	"jabber-bot/internal/config"
 	"jabber-bot/internal/models"
-	"jabber-bot/internal/xmpp"
 
 	"go.uber.org/zap"
 )
+
+// XMPPManagerInterface defines the interface for XMPP manager operations
+type XMPPManagerInterface interface {
+	GetWebhookChannel() <-chan models.Message
+}
 
 // Manager manages webhook service integration with XMPP manager
 type Manager struct {
 	config         *config.Config
 	logger         *zap.Logger
 	webhookService *Service
-	xmppManager    *xmpp.Manager
+	xmppManager    XMPPManagerInterface
 }
 
 // NewManager creates new webhook manager
-func NewManager(cfg *config.Config, logger *zap.Logger, xmppManager *xmpp.Manager) *Manager {
+func NewManager(cfg *config.Config, logger *zap.Logger, xmppManager XMPPManagerInterface) *Manager {
 	return &Manager{
 		config:         cfg,
 		logger:         logger,

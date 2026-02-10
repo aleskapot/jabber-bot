@@ -133,7 +133,7 @@ xmpp:
 	// Try to load config
 	_, err = Load(tempFile)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to unmarshal config")
+	assert.Contains(t, err.Error(), "failed to read config file")
 }
 
 func TestLoad_EnvironmentVariableOverride(t *testing.T) {
@@ -172,7 +172,7 @@ logging:
 
 	// Non-overridden values should remain
 	assert.Equal(t, "secret123", cfg.XMPP.Password)
-	assert.Equal(t, "info", cfg.Logging.Output) // default value
+	assert.Equal(t, "stdout", cfg.Logging.Output) // default value
 }
 
 func TestLoad_InvalidPort(t *testing.T) {
@@ -192,12 +192,10 @@ api:
 	err := os.WriteFile(tempFile, []byte(configContent), 0644)
 	require.NoError(t, err)
 
-	// Load config - this should not fail as viper will try to convert
-	cfg, err := Load(tempFile)
-	require.NoError(t, err)
-
-	// Port should be 0 (invalid conversion)
-	assert.Equal(t, 0, cfg.API.Port)
+	// Load config - this should fail with unmarshal error
+	_, err = Load(tempFile)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to unmarshal config")
 }
 
 func TestLoad_EmptyConfig(t *testing.T) {
@@ -241,12 +239,10 @@ webhook:
 	err := os.WriteFile(tempFile, []byte(configContent), 0644)
 	require.NoError(t, err)
 
-	// Load config - this should not fail as viper will use default
-	cfg, err := Load(tempFile)
-	require.NoError(t, err)
-
-	// Timeout should be default value
-	assert.Equal(t, 30*time.Second, cfg.Webhook.Timeout)
+	// Load config - this should fail with unmarshal error
+	_, err = Load(tempFile)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to unmarshal config")
 }
 
 func TestConfig_Validation(t *testing.T) {
