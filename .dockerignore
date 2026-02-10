@@ -1,0 +1,91 @@
+# Git directory and files
+.git/
+.gitignore
+.gitattributes
+
+# Documentation files
+README.md
+CHANGELOG.md
+LICENSE
+*.md
+docs/
+
+# IDE files
+.idea/
+.vscode/
+.stoplight/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files and caches
+tmp/
+temp/
+*.tmp
+
+# Test files and coverage
+*.test
+*.out
+coverage.html
+test/reports/
+
+# Build artifacts (redundant with bin/ but explicit)
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Development tools
+scripts/
+Makefile
+.air.toml
+go.work
+
+# Logs
+*.log
+
+# Sensitive configuration (keep example)
+configs/local.yaml
+configs/production.yaml
+
+# CI/CD files
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Docker files (except main Dockerfile)
+docker-compose*.yml
+docker-compose*.yaml
+docker-compose.override.yml
+dockerignore
+
+# Development/testing scripts
+test-api.sh
+test-*.sh
+integration-test-*.sh
+
+# Tool configuration files
+.golangci.yml
+.golangci.yaml
+.gosec*.json
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Cache directories
+node_modules/
+.cache/
+dist/

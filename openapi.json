@@ -1,0 +1,811 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Jabber Bot API",
+    "description": "XMPP Jabber bot with RESTful API for sending messages, monitoring status, and webhook integration. This API provides endpoints for sending XMPP messages to users and chat rooms, monitoring bot status and health, webhook management and statistics, and real-time message forwarding to configured webhooks. The bot connects to XMPP servers and provides a simple HTTP interface for bot operations.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Jabber Bot API Support"
+    },
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Development server"
+    },
+    {
+      "url": "https://your-domain.com",
+      "description": "Production server"
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "Root"
+        ],
+        "summary": "API root information",
+        "description": "Returns basic API information and available endpoints",
+        "operationId": "getRoot",
+        "responses": {
+          "200": {
+            "description": "API information retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RootResponse"
+                },
+                "example": {
+                  "name": "Jabber Bot API",
+                  "version": "1.0.0",
+                  "description": "XMPP Jabber bot with RESTful API",
+                  "endpoints": {
+                    "send": "/api/v1/send - Send XMPP message",
+                    "send_muc": "/api/v1/send-muc - Send MUC message",
+                    "status": "/api/v1/status - Get bot status",
+                    "health": "/api/v1/health - Health check",
+                    "docs": "/docs - API documentation"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/docs": {
+      "get": {
+        "tags": [
+          "Documentation"
+        ],
+        "summary": "API documentation",
+        "description": "Returns comprehensive API documentation in plain text format",
+        "operationId": "getDocs",
+        "responses": {
+          "200": {
+            "description": "API documentation retrieved successfully",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/send": {
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Send XMPP message",
+        "description": "Sends an XMPP message to a specified user JID. The message will be delivered immediately if the XMPP connection is active.\n\n**JID Format**: `username@domain.com/resource` or `username@domain.com`\n**Message Types**: \n- `chat` (default) - One-to-one conversation\n- `groupchat` - Group chat message\n- `headline` - News headline\n- `normal` - Normal message\n\n**Authentication**: Requires API key via `API-Key` header or `Authorization: Bearer <key>`",
+        "operationId": "sendMessage",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              },
+              "example": {
+                "to": "user@example.com",
+                "body": "Hello, world!",
+                "type": "chat"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message sent successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendMessageResponse"
+                },
+                "example": {
+                  "success": true,
+                  "message": "Message sent successfully",
+                  "data": {
+                    "to": "user@example.com",
+                    "type": "chat",
+                    "body_length": 13,
+                    "sent_at": "2023-12-01T12:00:00Z",
+                    "request_id": "abc123"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/send-muc": {
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Send MUC message",
+        "description": "Sends a message to a Multi-User Chat (MUC) room. The message will be delivered to all room participants.\n\n**Room JID Format**: `roomname@conference.domain.com`\n**Subject**: Optional - sets/changes the room subject/topic\n\n**Authentication**: Requires API key via `API-Key` header or `Authorization: Bearer <key>`",
+        "operationId": "sendMUCMessage",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMUCMessageRequest"
+              },
+              "example": {
+                "room": "room@conference.example.com",
+                "body": "Hello, room!",
+                "subject": "Room Topic"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MUC message sent successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendMUCMessageResponse"
+                },
+                "example": {
+                  "success": true,
+                  "message": "MUC message sent successfully",
+                  "data": {
+                    "room": "room@conference.example.com",
+                    "subject": "Room Topic",
+                    "body_length": 14,
+                    "sent_at": "2023-12-01T12:00:00Z",
+                    "request_id": "abc123"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "tags": [
+          "Status"
+        ],
+        "summary": "Get bot status",
+        "description": "Returns comprehensive status information about the bot including XMPP connection, API status, and webhook configuration",
+        "operationId": "getStatus",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                },
+                "example": {
+                  "xmpp_connected": true,
+                  "api_running": true,
+                  "webhook_url": "https://example.com/webhook",
+                  "version": "1.0.0"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "Status"
+        ],
+        "summary": "Health check",
+        "description": "Simple health check endpoint. Returns HTTP 200 when all services are healthy, HTTP 503 when XMPP connection is lost or other critical issues exist.",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "status": "ok",
+                  "timestamp": "2023-12-01T12:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service is unhealthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthErrorResponse"
+                },
+                "example": {
+                  "status": "error",
+                  "error": "XMPP connection lost",
+                  "timestamp": "2023-12-01T12:00:00Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhook/status": {
+      "get": {
+        "tags": [
+          "Webhook"
+        ],
+        "summary": "Get webhook status",
+        "description": "Returns detailed webhook service status and statistics including queue length, success/failure counts, and recent activity",
+        "operationId": "getWebhookStatus",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook status retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookStatusResponse"
+                },
+                "example": {
+                  "running": true,
+                  "healthy": true,
+                  "queue_length": 0,
+                  "webhook_url": "https://example.com/webhook",
+                  "total_sent": 150,
+                  "total_failed": 2,
+                  "last_sent": "2023-12-01T11:45:00Z",
+                  "last_failure": "2023-12-01T10:30:00Z",
+                  "last_error": "Connection timeout"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "RootResponse": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Jabber Bot API"
+          },
+          "version": {
+            "type": "string",
+            "example": "1.0.0"
+          },
+          "description": {
+            "type": "string",
+            "example": "XMPP Jabber bot with RESTful API"
+          },
+          "endpoints": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "send": "/api/v1/send - Send XMPP message",
+              "send_muc": "/api/v1/send-muc - Send MUC message",
+              "status": "/api/v1/status - Get bot status",
+              "health": "/api/v1/health - Health check",
+              "docs": "/docs - API documentation"
+            }
+          }
+        }
+      },
+      "SendMessageRequest": {
+        "type": "object",
+        "required": [
+          "to",
+          "body"
+        ],
+        "properties": {
+          "to": {
+            "type": "string",
+            "description": "JID of the message recipient",
+            "format": "xmpp-jid",
+            "example": "user@example.com"
+          },
+          "body": {
+            "type": "string",
+            "description": "Message content (maximum 10,000 characters)",
+            "maxLength": 10000,
+            "example": "Hello, world!"
+          },
+          "type": {
+            "type": "string",
+            "description": "Message type",
+            "enum": [
+              "chat",
+              "groupchat",
+              "headline",
+              "normal"
+            ],
+            "default": "chat",
+            "example": "chat"
+          }
+        }
+      },
+      "SendMUCMessageRequest": {
+        "type": "object",
+        "required": [
+          "room",
+          "body"
+        ],
+        "properties": {
+          "room": {
+            "type": "string",
+            "description": "JID of the MUC room",
+            "format": "xmpp-room-jid",
+            "example": "room@conference.example.com"
+          },
+          "body": {
+            "type": "string",
+            "description": "Message content (maximum 10,000 characters)",
+            "maxLength": 10000,
+            "example": "Hello, room!"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Optional room subject/topic",
+            "maxLength": 200,
+            "example": "Room Topic"
+          }
+        }
+      },
+      "MessageResponseData": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "description": "Recipient JID",
+            "example": "user@example.com"
+          },
+          "room": {
+            "type": "string",
+            "description": "Room JID (for MUC messages)",
+            "example": "room@conference.example.com"
+          },
+          "type": {
+            "type": "string",
+            "description": "Message type",
+            "example": "chat"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Message subject (for MUC messages)",
+            "example": "Room Topic"
+          },
+          "body_length": {
+            "type": "integer",
+            "description": "Length of the message body",
+            "example": 13
+          },
+          "sent_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when message was sent",
+            "example": "2023-12-01T12:00:00Z"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Unique request identifier",
+            "example": "abc123"
+          }
+        }
+      },
+      "SendMessageResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Message sent successfully"
+          },
+          "data": {
+            "$ref": "#/components/schemas/MessageResponseData"
+          }
+        }
+      },
+      "SendMUCMessageResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "MUC message sent successfully"
+          },
+          "data": {
+            "$ref": "#/components/schemas/MessageResponseData"
+          }
+        }
+      },
+      "StatusResponse": {
+        "type": "object",
+        "properties": {
+          "xmpp_connected": {
+            "type": "boolean",
+            "description": "Whether XMPP connection is active",
+            "example": true
+          },
+          "api_running": {
+            "type": "boolean",
+            "description": "Whether API server is running",
+            "example": true
+          },
+          "webhook_url": {
+            "type": "string",
+            "description": "Configured webhook URL",
+            "example": "https://example.com/webhook"
+          },
+          "version": {
+            "type": "string",
+            "description": "Bot version",
+            "example": "1.0.0"
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ],
+            "example": "ok"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2023-12-01T12:00:00Z"
+          }
+        }
+      },
+      "HealthErrorResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "error"
+            ],
+            "example": "error"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error description",
+            "example": "XMPP connection lost"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2023-12-01T12:00:00Z"
+          }
+        }
+      },
+      "IncomingMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Message ID",
+            "example": "msg123"
+          },
+          "from": {
+            "type": "string",
+            "description": "Sender JID",
+            "example": "sender@example.com"
+          },
+          "to": {
+            "type": "string",
+            "description": "Recipient JID",
+            "example": "bot@example.com"
+          },
+          "body": {
+            "type": "string",
+            "description": "Message content",
+            "example": "Hello bot"
+          },
+          "type": {
+            "type": "string",
+            "description": "Message type",
+            "example": "chat"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Message subject",
+            "example": ""
+          },
+          "thread": {
+            "type": "string",
+            "description": "Message thread ID",
+            "example": ""
+          },
+          "stamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Message timestamp",
+            "example": "2023-12-01T12:00:00Z"
+          }
+        }
+      },
+      "WebhookStatusResponse": {
+        "type": "object",
+        "properties": {
+          "running": {
+            "type": "boolean",
+            "description": "Whether webhook service is running",
+            "example": true
+          },
+          "healthy": {
+            "type": "boolean",
+            "description": "Whether webhook service is healthy",
+            "example": true
+          },
+          "queue_length": {
+            "type": "integer",
+            "description": "Number of items in webhook queue",
+            "example": 0
+          },
+          "webhook_url": {
+            "type": "string",
+            "description": "Configured webhook URL",
+            "example": "https://example.com/webhook"
+          },
+          "total_sent": {
+            "type": "integer",
+            "description": "Total successful webhook deliveries",
+            "example": 150
+          },
+          "total_failed": {
+            "type": "integer",
+            "description": "Total failed webhook deliveries",
+            "example": 2
+          },
+          "last_sent": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp of last successful webhook delivery",
+            "example": "2023-12-01T11:45:00Z"
+          },
+          "last_failure": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp of last webhook failure",
+            "example": "2023-12-01T10:30:00Z"
+          },
+          "last_error": {
+            "type": "string",
+            "description": "Last error message (if any)",
+            "example": "Connection timeout"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "description": "Error description",
+            "example": "Invalid request format"
+          },
+          "code": {
+            "type": "integer",
+            "description": "HTTP status code",
+            "example": 400
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Bad request - validation error or invalid JSON",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "success": false,
+              "error": "Invalid JID format",
+              "code": 400
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Unauthorized - invalid or missing API key",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "success": false,
+              "error": "Unauthorized - valid API key required",
+              "code": 401
+            }
+          }
+        }
+      },
+      "InternalServerError": {
+        "description": "Internal server error - XMPP errors or unexpected failures",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "success": false,
+              "error": "Failed to send XMPP message",
+              "code": 500
+            }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "Service unavailable - XMPP connection lost",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "success": false,
+              "error": "XMPP connection not available",
+              "code": 503
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "API-Key",
+        "description": "API key for authentication"
+      }
+    }
+  },
+  "security": [
+    {
+      "ApiKeyAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Root",
+      "description": "API root and documentation endpoints"
+    },
+    {
+      "name": "Messages",
+      "description": "XMPP message sending endpoints"
+    },
+    {
+      "name": "Status",
+      "description": "Bot status and health check endpoints"
+    },
+    {
+      "name": "Webhook",
+      "description": "Webhook management and status endpoints"
+    },
+    {
+      "name": "Documentation",
+      "description": "Webhook management and status endpoints"
+    }
+  ],
+  "externalDocs": {
+    "description": "GitHub Repository",
+    "url": "https://github.com/your-org/jabber-bot"
+  },
+  "x-webhook-payload": {
+    "description": "Payload format for webhooks when XMPP messages are received",
+    "type": "object",
+    "properties": {
+      "message": {
+        "$ref": "#/components/schemas/IncomingMessage"
+      },
+      "timestamp": {
+        "type": "string",
+        "format": "date-time",
+        "example": "2023-12-01T12:00:00Z"
+      },
+      "source": {
+        "type": "string",
+        "example": "jabber-bot"
+      }
+    },
+    "example": {
+      "message": {
+        "id": "msg123",
+        "from": "sender@example.com",
+        "to": "bot@example.com",
+        "body": "Hello bot",
+        "type": "chat",
+        "subject": "",
+        "thread": "",
+        "stamp": "2023-12-01T12:00:00Z"
+      },
+      "timestamp": "2023-12-01T12:00:00Z",
+      "source": "jabber-bot"
+    }
+  }
+}

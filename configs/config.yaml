@@ -1,0 +1,31 @@
+# XMPP Configuration
+xmpp:
+  jid: "bot@jabber.org"
+  password: "bot-password"
+  server: "jabber.org:5222"
+  resource: "bot"
+  
+# REST API Configuration
+api:
+  port: 8080
+  host: "0.0.0.0"
+  api_key: "your-secret-api-key-change-in-production"
+  auth_enabled: true
+  
+# Webhook Configuration
+webhook:
+  url: "https://example.com/webhook"
+  timeout: 30s
+  retry_attempts: 3
+  
+# Logging Configuration
+logging:
+  level: "debug"  # debug, info, warn, error
+  output: "stdout"  # stdout, stderr, file
+  file_path: ""  # for output=file
+  
+# Reconnection Configuration
+reconnection:
+  enabled: true
+  max_attempts: 5
+  backoff: "5s"
