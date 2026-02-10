@@ -70,6 +70,9 @@ func (s *Server) setupMiddleware() {
 func (s *Server) setupRoutes() {
 	api := s.app.Group("/api/v1")
 
+	// Health endpoint (public - no auth required)
+	api.Get("/health", s.handleHealth)
+
 	// Apply authentication middleware to protected endpoints
 	if s.config.API.Enabled {
 		api.Use(s.AuthMiddleware())
@@ -82,9 +85,6 @@ func (s *Server) setupRoutes() {
 	// Status endpoints (protected)
 	api.Get("/status", s.handleStatus)
 	api.Get("/webhook/status", s.handleWebhookStatus)
-
-	// Health endpoint (public - no auth required)
-	api.Get("/health", s.handleHealth)
 
 	// Documentation (public)
 	s.app.Get("/", s.handleRoot)
