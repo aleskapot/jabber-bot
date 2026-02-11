@@ -203,7 +203,6 @@ func (m *Manager) mergeChannels(channels ...<-chan models.Message) <-chan models
 	return output
 }
 
-// Errors
 var (
 	ErrNoDefaultClient = &XMPPError{
 		Code:    "NO_DEFAULT_CLIENT",
