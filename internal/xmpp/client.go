@@ -89,8 +89,7 @@ func (c *Client) Connect(ctx context.Context) error {
 		zap.String("server", c.config.XMPP.Server),
 	)
 
-	// Start message processing goroutine
-	go c.processMessages(ctx)
+	// Start reconnection handler
 	go c.handleReconnection(ctx)
 
 	return nil
@@ -248,37 +247,6 @@ func (c *Client) setupHandlers() {
 	})
 }
 
-// processMessages processes incoming XMPP messages
-func (c *Client) processMessages(ctx context.Context) {
-	c.logger.Info("Starting message processor")
-	defer c.logger.Info("Message processor stopped")
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case msg, ok := <-c.messageChan:
-			if !ok {
-				return
-			}
-			c.handleIncomingMessage(msg)
-		}
-	}
-}
-
-// handleIncomingMessage processes incoming message
-func (c *Client) handleIncomingMessage(msg models.Message) {
-	c.logger.Info("Processing incoming message",
-		zap.String("from", msg.From),
-		zap.String("to", msg.To),
-		zap.String("type", msg.Type),
-		zap.Int("body_length", len(msg.Body)),
-	)
-
-	// Here you can add additional processing logic
-	// For now, just log the message
-}
-
 // handleReconnection handles automatic reconnection
 func (c *Client) handleReconnection(ctx context.Context) {
 	if !c.config.Reconnection.Enabled {
@@ -402,22 +370,4 @@ func (c *Client) monitorXMPPStreamLogs(tempFile *os.File) {
 			}
 		}
 	}
-}
-
-// xmppLoggerAdapter adapts zap logger to XMPP logger interface and io.Writer
-type xmppLoggerAdapter struct {
-	logger *zap.Logger
-}
-
-func (l *xmppLoggerAdapter) Printf(format string, v ...interface{}) {
-	l.logger.Debug(fmt.Sprintf(format, v...))
-}
-
-func (l *xmppLoggerAdapter) Println(v ...interface{}) {
-	l.logger.Debug(fmt.Sprint(v...))
-}
-
-func (l *xmppLoggerAdapter) Write(p []byte) (n int, err error) {
-	l.logger.Debug("XMPP stream", zap.String("data", string(p)))
-	return len(p), nil
 }
