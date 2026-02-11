@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -483,4 +484,168 @@ func TestWebhookStats_ThreadSafety(t *testing.T) {
 	stats.mu.RLock()
 	defer stats.mu.RUnlock()
 	assert.Greater(t, stats.TotalSent+stats.TotalFailed, int64(0))
+}
+
+func TestService_TestModeProcessing(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{
+		Webhook: config.WebhookConfig{
+			URL:            "https://example.com/webhook",
+			Timeout:        5 * time.Second,
+			RetryAttempts:  1,
+			TestModeSuffix: "-test",
+		},
+	}
+
+	service := NewService(cfg, logger)
+
+	// Create mock HTTP server to track requests
+	var receivedBody string
+	var isTestModeHeader string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		isTestModeHeader = r.Header.Get("Webhook-Test-Mode")
+
+		// Read and decode payload
+		var payload models.WebhookPayload
+		err := json.NewDecoder(r.Body).Decode(&payload)
+		require.NoError(t, err)
+		receivedBody = payload.Message.Body
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Update config with mock server URL
+	service.config.Webhook.URL = server.URL
+
+	// Test normal message
+	msg1 := models.Message{
+		From: "user@example.com",
+		Body: "normal message",
+	}
+
+	service.sendWebhook(msg1)
+	assert.Equal(t, "normal message", receivedBody)
+	assert.Equal(t, "", isTestModeHeader)
+
+	// Test test message
+	msg2 := models.Message{
+		From: "user@example.com",
+		Body: "[test] test message",
+	}
+
+	service.sendWebhook(msg2)
+	assert.Equal(t, "test message", receivedBody) // [test] prefix removed
+	assert.Equal(t, "true", isTestModeHeader)     // Test mode header added
+}
+
+func TestService_TestModeURLModification(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+
+	tests := []struct {
+		name           string
+		configURL      string
+		messageBody    string
+		expectedURL    string
+		expectedBody   string
+		expectTestMode bool
+	}{
+		{
+			name:           "normal message unchanged",
+			configURL:      "https://example.com/webhook",
+			messageBody:    "normal message",
+			expectedURL:    "https://example.com/webhook",
+			expectedBody:   "normal message",
+			expectTestMode: false,
+		},
+		{
+			name:           "test message with webhook URL",
+			configURL:      "https://example.com/webhook",
+			messageBody:    "[test] test message",
+			expectedURL:    "https://example.com/webhook-test",
+			expectedBody:   "test message",
+			expectTestMode: true,
+		},
+		{
+			name:           "test message with webhook path",
+			configURL:      "https://example.com/webhook/path",
+			messageBody:    "[test] test message",
+			expectedURL:    "https://example.com/webhook-test/path",
+			expectedBody:   "test message",
+			expectTestMode: true,
+		},
+		{
+			name:           "test message with non-webhook URL",
+			configURL:      "https://example.com/api",
+			messageBody:    "[test] test message",
+			expectedURL:    "https://example.com/api",
+			expectedBody:   "test message",
+			expectTestMode: true,
+		},
+		{
+			name:           "test message with already test webhook",
+			configURL:      "https://example.com/webhook-test",
+			messageBody:    "[test] test message",
+			expectedURL:    "https://example.com/webhook-test",
+			expectedBody:   "test message",
+			expectTestMode: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Webhook: config.WebhookConfig{
+					URL:            tt.configURL,
+					Timeout:        5 * time.Second,
+					RetryAttempts:  1,
+					TestModeSuffix: "-test",
+				},
+			}
+
+			service := NewService(cfg, logger)
+
+			var actualBody string
+			var isTestModeHeader string
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				isTestModeHeader = r.Header.Get("Webhook-Test-Mode")
+
+				var payload models.WebhookPayload
+				err := json.NewDecoder(r.Body).Decode(&payload)
+				require.NoError(t, err)
+				actualBody = payload.Message.Body
+
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			// Update config with mock server URL (preserve path)
+			baseURL := tt.configURL
+			parsedURL, _ := url.Parse(tt.configURL)
+			if parsedURL != nil {
+				baseURL = server.URL + parsedURL.Path
+				if parsedURL.RawQuery != "" {
+					baseURL += "?" + parsedURL.RawQuery
+				}
+			}
+
+			service.config.Webhook.URL = baseURL
+
+			msg := models.Message{
+				From: "user@example.com",
+				Body: tt.messageBody,
+			}
+
+			service.sendWebhook(msg)
+
+			assert.Equal(t, tt.expectedBody, actualBody)
+			if tt.expectTestMode {
+				assert.Equal(t, "true", isTestModeHeader)
+			} else {
+				assert.Equal(t, "", isTestModeHeader)
+			}
+		})
+	}
 }

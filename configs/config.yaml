@@ -14,9 +14,10 @@ api:
   
 # Webhook Configuration
 webhook:
-  url: "https://example.com/webhook"
+  url: "https://example.com/webhook/somepath"
   timeout: 30s
   retry_attempts: 3
+  test_mode_suffix: "-test"  # Suffix for webhook URLs when [test] prefix is detected
   
 # Logging Configuration
 logging:

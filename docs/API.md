@@ -133,6 +133,61 @@ The bot can forward incoming XMPP messages to configured webhook URLs:
 }
 ```
 
+### n8n Test Mode Support
+
+The bot supports automatic test mode detection for n8n webhook integrations:
+
+#### Test Mode Detection Rules
+- **Message Detection**: Messages starting with `[test]` prefix are treated as test messages
+- **URL Modification**: If webhook URL contains `webhook` but not `webhook-test`, the suffix `-test` is added
+- **Message Processing**: The `[test]` prefix and following spaces are removed from the message body
+
+#### Examples
+
+**Normal Message**:
+```
+Input: "Hello world"
+Webhook URL: https://example.com/webhook
+Result: Sent to https://example.com/webhook with body "Hello world"
+```
+
+**Test Message**:
+```
+Input: "[test] Debug message"
+Webhook URL: https://example.com/webhook
+Result: Sent to https://example.com/webhook-test with body "Debug message"
+```
+
+**Test Message with Path**:
+```
+Input: "[test] Testing workflow"
+Webhook URL: https://n8n.example.com/webhook/production/v1
+Result: Sent to https://n8n.example.com/webhook-test/production/v1 with body "Testing workflow"
+```
+
+**Test Message with Non-Webhook URL**:
+```
+Input: "[test] Test message"
+Webhook URL: https://example.com/api/endpoint
+Result: Sent to https://example.com/api/endpoint with body "Test message" (URL unchanged)
+```
+
+#### Configuration
+```yaml
+webhook:
+  url: "https://example.com/webhook"
+  test_mode_suffix: "-test"  # Customizable suffix for test mode
+  timeout: 30s
+  retry_attempts: 3
+```
+
+#### Headers Added in Test Mode
+- `Webhook-Test-Mode: "true"` - Indicates test mode processing
+- Standard headers remain unchanged
+
+#### Environment Variables
+- `JABBER_BOT_WEBHOOK_TEST_MODE_SUFFIX`: Override default test suffix
+
 ## Error Codes
 
 - `400` - Bad Request (validation errors, invalid JSON)

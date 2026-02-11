@@ -31,9 +31,10 @@ type APIConfig struct {
 }
 
 type WebhookConfig struct {
-	URL           string        `mapstructure:"url"`
-	Timeout       time.Duration `mapstructure:"timeout"`
-	RetryAttempts int           `mapstructure:"retry_attempts"`
+	URL            string        `mapstructure:"url"`
+	Timeout        time.Duration `mapstructure:"timeout"`
+	RetryAttempts  int           `mapstructure:"retry_attempts"`
+	TestModeSuffix string        `mapstructure:"test_mode_suffix"`
 }
 
 type LoggingConfig struct {
@@ -86,6 +87,9 @@ func Load(configPath string) (*Config, error) {
 	}
 	if config.Webhook.RetryAttempts == 0 {
 		config.Webhook.RetryAttempts = 3
+	}
+	if config.Webhook.TestModeSuffix == "" {
+		config.Webhook.TestModeSuffix = "-test"
 	}
 	if config.Logging.Level == "" {
 		config.Logging.Level = "info"

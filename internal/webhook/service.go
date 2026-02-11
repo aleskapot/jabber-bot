@@ -25,6 +25,7 @@ type Service struct {
 	running      bool
 	cancelFunc   context.CancelFunc
 	stats        *WebhookStats
+	testMode     *TestModeUtils
 }
 
 // WebhookStats contains webhook statistics
@@ -47,6 +48,7 @@ func NewService(cfg *config.Config, logger *zap.Logger) *Service {
 		},
 		messageQueue: make(chan models.Message, 1000),
 		stats:        &WebhookStats{},
+		testMode:     NewTestModeUtils(cfg.Webhook.TestModeSuffix),
 	}
 }
 
@@ -168,6 +170,12 @@ func (s *Service) sendWebhook(msg models.Message) {
 	// Send with retries
 	var lastErr error
 	for attempt := 1; attempt <= s.config.Webhook.RetryAttempts; attempt++ {
+		webhookURL := s.config.Webhook.URL
+		// Check if test mode is detected and update URL
+		if _, testURL, isTestMode := s.testMode.ProcessTestMessage(payload.Message.Body, s.config.Webhook.URL); isTestMode {
+			webhookURL = testURL
+		}
+
 		err := s.sendWebhookAttempt(payload)
 		if err == nil {
 			// Success
@@ -176,6 +184,7 @@ func (s *Service) sendWebhook(msg models.Message) {
 				zap.Int("attempt", attempt),
 				zap.String("from", msg.From),
 				zap.String("to", msg.To),
+				zap.String("url", webhookURL),
 			)
 			return
 		}
@@ -186,6 +195,7 @@ func (s *Service) sendWebhook(msg models.Message) {
 			zap.Int("max_attempts", s.config.Webhook.RetryAttempts),
 			zap.Error(err),
 			zap.String("from", msg.From),
+			zap.String("url", webhookURL),
 		)
 
 		// Don't wait after last attempt
@@ -203,12 +213,19 @@ func (s *Service) sendWebhook(msg models.Message) {
 	} else {
 		errorMsg = "unknown error"
 	}
+	// Determine final webhook URL for logging
+	webhookURL := s.config.Webhook.URL
+	if _, testURL, isTestMode := s.testMode.ProcessTestMessage(payload.Message.Body, s.config.Webhook.URL); isTestMode {
+		webhookURL = testURL
+	}
+
 	s.updateStats(false, errorMsg)
 	s.logger.Error("Webhook failed after all attempts",
 		zap.Int("attempts", s.config.Webhook.RetryAttempts),
 		zap.Error(lastErr),
 		zap.String("from", msg.From),
 		zap.String("to", msg.To),
+		zap.String("url", webhookURL),
 	)
 }
 
@@ -218,6 +235,19 @@ func (s *Service) sendWebhookAttempt(payload models.WebhookPayload) error {
 		return fmt.Errorf("webhook URL is not configured")
 	}
 
+	// Process message for test mode
+	processedBody, webhookURL, isTestMode := s.testMode.ProcessTestMessage(payload.Message.Body, s.config.Webhook.URL)
+
+	// Update message body if test mode is detected
+	if isTestMode {
+		payload.Message.Body = processedBody
+		s.logger.Debug("Test mode detected, using modified webhook URL",
+			zap.String("original_url", s.config.Webhook.URL),
+			zap.String("test_url", webhookURL),
+			zap.String("original_body", payload.Message.Body),
+		)
+	}
+
 	// Marshal payload
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
@@ -225,7 +255,7 @@ func (s *Service) sendWebhookAttempt(payload models.WebhookPayload) error {
 	}
 
 	// Create HTTP request
-	req, err := http.NewRequest("POST", s.config.Webhook.URL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", webhookURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create HTTP request: %w", err)
 	}
@@ -235,6 +265,11 @@ func (s *Service) sendWebhookAttempt(payload models.WebhookPayload) error {
 	req.Header.Set("User-Agent", "Jabber-Bot/1.0.0")
 	req.Header.Set("X-Webhook-Source", "jabber-bot")
 	req.Header.Set("X-Webhook-Timestamp", payload.Timestamp)
+
+	// Add test mode header for debugging
+	if isTestMode {
+		req.Header.Set("Webhook-Test-Mode", "true")
+	}
 
 	// Send request
 	resp, err := s.httpClient.Do(req)
