@@ -165,8 +165,7 @@ func errorHandler(c *fiber.Ctx, err error) error {
 	}
 
 	// Type assertion to get Fiber error (handles wrapped errors)
-	var fiberErr *fiber.Error
-	if errors.As(err, &fiberErr) {
+	if fiberErr, ok := errors.AsType[*fiber.Error](err); ok {
 		response.Code = fiberErr.Code
 		response.Error = fiberErr.Message
 	} else {
