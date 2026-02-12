@@ -375,13 +375,13 @@ Use the provided OpenAPI specification files to test the API with tools like:
 // handleOpenAPIYAML handles GET /openapi.yaml
 func (s *Server) handleOpenAPIYAML(c *fiber.Ctx) error {
 	c.Type("application/x-yaml")
-	return c.SendFile("./openapi.yaml")
+	return c.SendFile("./docs/openapi.yaml")
 }
 
 // handleOpenAPIJSON handles GET /openapi.json
 func (s *Server) handleOpenAPIJSON(c *fiber.Ctx) error {
 	c.Type("application/json")
-	return c.SendFile("./openapi.json")
+	return c.SendFile("./docs/openapi.json")
 }
 
 // validateSendMessageRequest validates send message request
