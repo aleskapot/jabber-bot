@@ -41,6 +41,7 @@ You can use the specification files with various OpenAPI tools:
 #### Documentation
 - `GET /` - API root information
 - `GET /docs` - Plain text documentation
+- `GET /swagger` - Show Swagger UI
 - `GET /openapi.yaml` - OpenAPI specification (YAML)
 - `GET /openapi.json` - OpenAPI specification (JSON)
 

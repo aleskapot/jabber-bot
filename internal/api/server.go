@@ -8,6 +8,7 @@ import (
 	"jabber-bot/internal/xmpp"
 	"net"
 
+	"github.com/gofiber/contrib/swagger"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
@@ -73,6 +74,14 @@ func (s *Server) setupMiddleware() {
 		c.Locals("manager", s.manager)
 		return c.Next()
 	})
+
+	// Swagger documentation
+	s.app.Use(swagger.New(swagger.Config{
+		Title:    "Jabber Bot API",
+		BasePath: "/",
+		Path:     "swagger",
+		FilePath: "./docs/openapi.json",
+	}))
 }
 
 // setupRoutes configures API routes
