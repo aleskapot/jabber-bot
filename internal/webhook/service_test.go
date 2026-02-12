@@ -155,7 +155,7 @@ func TestService_SendMessage_QueueFull(t *testing.T) {
 			Timeout: cfg.Webhook.Timeout,
 		},
 		messageQueue: make(chan models.Message, 2), // Small queue
-		stats:        &WebhookStats{},
+		stats:        &Stats{},
 	}
 
 	// Start service but fill queue to capacity
@@ -449,7 +449,7 @@ func TestService_RetryAttempts(t *testing.T) {
 }
 
 func TestWebhookStats_ThreadSafety(t *testing.T) {
-	stats := &WebhookStats{}
+	stats := &Stats{}
 
 	// Test concurrent access
 	done := make(chan bool, 10)

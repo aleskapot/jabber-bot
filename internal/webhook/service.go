@@ -24,12 +24,12 @@ type Service struct {
 	mu           sync.RWMutex
 	running      bool
 	cancelFunc   context.CancelFunc
-	stats        *WebhookStats
+	stats        *Stats
 	testMode     *TestModeUtils
 }
 
-// WebhookStats contains webhook statistics
-type WebhookStats struct {
+// Stats contains webhook statistics
+type Stats struct {
 	TotalSent   int64     `json:"total_sent"`
 	TotalFailed int64     `json:"total_failed"`
 	LastSent    time.Time `json:"last_sent"`
@@ -47,7 +47,7 @@ func NewService(cfg *config.Config, logger *zap.Logger) *Service {
 			Timeout: cfg.Webhook.Timeout,
 		},
 		messageQueue: make(chan models.Message, 1000),
-		stats:        &WebhookStats{},
+		stats:        &Stats{},
 		testMode:     NewTestModeUtils(cfg.Webhook.TestModeSuffix),
 	}
 }
@@ -120,11 +120,11 @@ func (s *Service) SendMessage(msg models.Message) error {
 }
 
 // GetStats returns webhook statistics
-func (s *Service) GetStats() WebhookStats {
+func (s *Service) GetStats() Stats {
 	s.stats.mu.RLock()
 	defer s.stats.mu.RUnlock()
 
-	return WebhookStats{
+	return Stats{
 		TotalSent:   s.stats.TotalSent,
 		TotalFailed: s.stats.TotalFailed,
 		LastSent:    s.stats.LastSent,
