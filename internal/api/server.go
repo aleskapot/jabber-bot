@@ -7,6 +7,7 @@ import (
 	"jabber-bot/internal/models"
 	"jabber-bot/internal/xmpp"
 	"net"
+	"os"
 
 	"github.com/gofiber/contrib/swagger"
 	"github.com/gofiber/fiber/v2"
@@ -75,13 +76,16 @@ func (s *Server) setupMiddleware() {
 		return c.Next()
 	})
 
-	// Swagger documentation
-	s.app.Use(swagger.New(swagger.Config{
-		Title:    "Jabber Bot API",
-		BasePath: "/",
-		Path:     "swagger",
-		FilePath: "./docs/openapi.json",
-	}))
+	// Swagger documentation. Register only if file exists
+	openAPIPath := "docs/openapi.json"
+	if _, err := os.Stat(openAPIPath); err == nil {
+		s.app.Use(swagger.New(swagger.Config{
+			Title:    "Jabber Bot API",
+			BasePath: "/",
+			Path:     "swagger",
+			FilePath: openAPIPath,
+		}))
+	}
 }
 
 // setupRoutes configures API routes
