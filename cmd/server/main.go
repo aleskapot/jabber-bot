@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"jabber-bot/internal/api"
 	"jabber-bot/internal/config"
@@ -75,15 +76,17 @@ func main() {
 
 	zapLogger.Info("Jabber bot started successfully")
 
-	// Wait for interrupt signal
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	// When an interrupt or termination signal is sent, stop the server gracefully
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	<-sigChan
+	<-sigCtx.Done()
 	zapLogger.Info("Shutting down...")
 
-	// Stop API server
-	if err := apiServer.Stop(); err != nil {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := apiServer.StopWithContext(shutdownCtx); err != nil {
 		zapLogger.Error("Error stopping API server", zap.Error(err))
 	}
 

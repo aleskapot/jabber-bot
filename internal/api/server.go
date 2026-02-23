@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"jabber-bot/internal/config"
@@ -8,6 +9,7 @@ import (
 	"jabber-bot/internal/xmpp"
 	"net"
 	"os"
+	"time"
 
 	"github.com/gofiber/contrib/swagger"
 	"github.com/gofiber/fiber/v2"
@@ -138,10 +140,20 @@ func (s *Server) Start() error {
 	return s.app.Listener(listener)
 }
 
-// Stop stops the API server
+// Stop stops the API server gracefully with timeout
 func (s *Server) Stop() error {
+	return s.StopWithContext(context.Background())
+}
+
+// StopWithContext stops the API server gracefully with context
+func (s *Server) StopWithContext(ctx context.Context) error {
 	s.logger.Info("Stopping API server")
-	return s.app.Shutdown()
+
+	timeout := 30 * time.Second
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	return s.app.ShutdownWithContext(ctx)
 }
 
 // getAddress returns the server address
