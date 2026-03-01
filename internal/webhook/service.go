@@ -26,6 +26,7 @@ type Service struct {
 	cancelFunc   context.CancelFunc
 	stats        *Stats
 	testMode     *TestModeUtils
+	wg           sync.WaitGroup
 }
 
 // Stats contains webhook statistics
@@ -65,6 +66,7 @@ func (s *Service) Start() error {
 	s.cancelFunc = cancel
 
 	// Start webhook processor
+	s.wg.Add(1)
 	go s.processWebhooks(ctx)
 
 	s.running = true
@@ -86,9 +88,13 @@ func (s *Service) Stop() error {
 		return nil
 	}
 
+	// Signal processor to stop
 	if s.cancelFunc != nil {
 		s.cancelFunc()
 	}
+
+	// Wait for processor to finish
+	s.wg.Wait()
 
 	close(s.messageQueue)
 	s.running = false
@@ -142,6 +148,7 @@ func (s *Service) isRunning() bool {
 
 // processWebhooks processes messages from queue and sends webhooks
 func (s *Service) processWebhooks(ctx context.Context) {
+	defer s.wg.Done()
 	s.logger.Info("Starting webhook processor")
 	defer s.logger.Info("Webhook processor stopped")
 

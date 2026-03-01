@@ -86,18 +86,19 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := apiServer.StopWithContext(shutdownCtx); err != nil {
-		zapLogger.Error("Error stopping API server", zap.Error(err))
-	}
-
-	// Stop webhook manager
+	// Stop webhook manager FIRST (to stop reading from XMPP channel)
 	if err := webhookManager.Stop(); err != nil {
 		zapLogger.Error("Error stopping webhook manager", zap.Error(err))
 	}
 
-	// Stop XMPP manager
+	// Stop XMPP manager (this closes webhookChan)
 	if err := xmppManager.Stop(); err != nil {
 		zapLogger.Error("Error stopping XMPP manager", zap.Error(err))
+	}
+
+	// Stop API server last
+	if err := apiServer.StopWithContext(shutdownCtx); err != nil {
+		zapLogger.Error("Error stopping API server", zap.Error(err))
 	}
 
 	zapLogger.Info("Application stopped")

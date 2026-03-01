@@ -18,6 +18,8 @@ type Manager struct {
 	clients     map[string]*Client
 	mu          sync.RWMutex
 	webhookChan chan models.Message
+	stopChan    chan struct{}
+	wg          sync.WaitGroup
 }
 
 // NewManager creates new XMPP manager
@@ -27,6 +29,7 @@ func NewManager(cfg *config.Config, logger *zap.Logger) *Manager {
 		logger:      logger,
 		clients:     make(map[string]*Client),
 		webhookChan: make(chan models.Message, 1000),
+		stopChan:    make(chan struct{}),
 	}
 }
 
@@ -48,6 +51,7 @@ func (m *Manager) Start() error {
 	m.mu.Unlock()
 
 	// Start webhook dispatcher
+	m.wg.Add(1)
 	go m.dispatchWebhooks()
 
 	m.logger.Info("XMPP manager started successfully")
@@ -58,10 +62,11 @@ func (m *Manager) Start() error {
 func (m *Manager) Stop() error {
 	m.logger.Info("Stopping XMPP manager")
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	// Signal dispatcher to stop
+	close(m.stopChan)
 
-	// Disconnect all clients
+	// Disconnect all clients (safe after stopChan is closed)
+	m.mu.Lock()
 	for id, client := range m.clients {
 		if err := client.Disconnect(); err != nil {
 			m.logger.Error("Error disconnecting client",
@@ -70,9 +75,15 @@ func (m *Manager) Stop() error {
 			)
 		}
 	}
+	m.mu.Unlock()
 
+	// Wait for dispatcher to finish
+	m.wg.Wait()
+
+	m.mu.Lock()
 	close(m.webhookChan)
 	m.clients = make(map[string]*Client)
+	m.mu.Unlock()
 
 	m.logger.Info("XMPP manager stopped")
 	return nil
@@ -122,6 +133,7 @@ func (m *Manager) GetWebhookChannel() <-chan models.Message {
 
 // dispatchWebhooks processes messages for webhook delivery
 func (m *Manager) dispatchWebhooks() {
+	defer m.wg.Done()
 	m.logger.Info("Starting webhook dispatcher")
 	defer m.logger.Info("Webhook dispatcher stopped")
 
@@ -144,6 +156,8 @@ func (m *Manager) dispatchWebhooks() {
 
 	for {
 		select {
+		case <-m.stopChan:
+			return
 		case msg, ok := <-merged:
 			if !ok {
 				return

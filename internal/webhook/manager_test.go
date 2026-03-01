@@ -73,9 +73,10 @@ func TestManager_ProcessXMPPMessages(t *testing.T) {
 	msgChan := make(chan models.Message, 10)
 	xmppManager.On("GetWebhookChannel").Return((<-chan models.Message)(msgChan))
 
-	// Start message processor in goroutine
-	ctx, cancel := context.WithCancel(context.Background())
-	go manager.processXMPPMessages(ctx)
+	// Use Start() which properly sets up WaitGroup
+	ctx := context.Background()
+	err := manager.Start(ctx)
+	require.NoError(t, err)
 
 	// Send test message
 	testMsg := models.Message{
@@ -90,14 +91,12 @@ func TestManager_ProcessXMPPMessages(t *testing.T) {
 	// Wait a bit for processing
 	time.Sleep(100 * time.Millisecond)
 
-	// Cancel context to stop processor
-	cancel()
+	// Stop manager (this cancels context and waits for goroutines)
+	err = manager.Stop()
+	require.NoError(t, err)
 
 	// Close channel to clean up
 	close(msgChan)
-
-	// Wait for goroutine to finish
-	time.Sleep(50 * time.Millisecond)
 
 	xmppManager.AssertExpectations(t)
 }

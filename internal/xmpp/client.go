@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"jabber-bot/internal/config"
@@ -22,7 +23,7 @@ type Client struct {
 	logger       *zap.Logger
 	client       *xmpp.Client
 	router       *xmpp.Router
-	connected    bool
+	connected    int32
 	messageChan  chan models.Message
 	mu           sync.RWMutex
 	cancelFunc   context.CancelFunc
@@ -354,16 +355,16 @@ func (c *Client) reconnect() error {
 
 // isConnected returns connection status (thread-safe)
 func (c *Client) isConnected() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.connected
+	return atomic.LoadInt32(&c.connected) == 1
 }
 
 // setConnected sets connection status (thread-safe)
 func (c *Client) setConnected(connected bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.connected = connected
+	if connected {
+		atomic.StoreInt32(&c.connected, 1)
+	} else {
+		atomic.StoreInt32(&c.connected, 0)
+	}
 }
 
 // monitorXMPPStreamLogs monitors XMPP stream log file and pipes new content to zap logger

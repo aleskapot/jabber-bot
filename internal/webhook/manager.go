@@ -3,6 +3,7 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"jabber-bot/internal/config"
 	"jabber-bot/internal/models"
@@ -21,6 +22,8 @@ type Manager struct {
 	logger         *zap.Logger
 	webhookService *Service
 	xmppManager    XMPPManagerInterface
+	cancelFunc     context.CancelFunc
+	wg             sync.WaitGroup
 }
 
 // NewManager creates new webhook manager
@@ -42,8 +45,13 @@ func (m *Manager) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start webhook service: %w", err)
 	}
 
+	// Create a cancellable context for the processor
+	processorCtx, cancel := context.WithCancel(ctx)
+	m.cancelFunc = cancel
+
 	// Start message processor
-	go m.processXMPPMessages(ctx)
+	m.wg.Add(1)
+	go m.processXMPPMessages(processorCtx)
 
 	m.logger.Info("Webhook manager started successfully")
 	return nil
@@ -52,6 +60,14 @@ func (m *Manager) Start(ctx context.Context) error {
 // Stop stops webhook manager
 func (m *Manager) Stop() error {
 	m.logger.Info("Stopping webhook manager")
+
+	// Cancel the processor context
+	if m.cancelFunc != nil {
+		m.cancelFunc()
+	}
+
+	// Wait for processor to finish
+	m.wg.Wait()
 
 	// Stop webhook service
 	if err := m.webhookService.Stop(); err != nil {
@@ -70,6 +86,7 @@ func (m *Manager) GetService() *Service {
 
 // processXMPPMessages processes messages from XMPP manager
 func (m *Manager) processXMPPMessages(ctx context.Context) {
+	defer m.wg.Done()
 	m.logger.Info("Starting XMPP message processor for webhooks")
 	defer m.logger.Info("XMPP message processor stopped")
 
