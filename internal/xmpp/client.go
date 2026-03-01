@@ -145,6 +145,11 @@ func (c *Client) SendMessage(to, body, messageType string) error {
 		Body: body,
 	}
 
+	// XEP-0184: Request delivery receipt for chat messages (not groupchat)
+	if messageType != "groupchat" {
+		msg.Extensions = append(msg.Extensions, stanza.ReceiptRequest{})
+	}
+
 	if err := c.client.Send(msg); err != nil {
 		c.logger.Error("Failed to send XMPP message",
 			zap.String("to", to),
@@ -239,6 +244,55 @@ func (c *Client) setupHandlers() {
 				zap.String("to", msg.To),
 				zap.String("type", string(msg.Type)),
 			)
+
+			// XEP-0184: Send delivery receipt if requested
+			var receiptRequested bool
+			for _, ext := range msg.Extensions {
+				c.logger.Debug("Checking extension",
+					zap.String("type", fmt.Sprintf("%T", ext)),
+				)
+				switch ext.(type) {
+				case stanza.ReceiptRequest:
+					receiptRequested = true
+				case *stanza.ReceiptRequest:
+					receiptRequested = true
+				}
+				if receiptRequested {
+					break
+				}
+			}
+
+			c.logger.Debug("Message processing",
+				zap.String("from", msg.From),
+				zap.String("msg_id", msg.Id),
+				zap.Bool("receipt_requested", receiptRequested),
+				zap.Int("extensions_count", len(msg.Extensions)),
+			)
+
+			if receiptRequested && msg.From != "" {
+				go func(from, msgID string) {
+					receipt := stanza.Message{
+						Attrs: stanza.Attrs{
+							To:   from,
+							Type: stanza.StanzaType("chat"),
+						},
+						Extensions: []stanza.MsgExtension{
+							stanza.ReceiptReceived{ID: msgID},
+						},
+					}
+					if err := c.client.Send(receipt); err != nil {
+						c.logger.Error("Failed to send delivery receipt",
+							zap.String("to", from),
+							zap.Error(err),
+						)
+					} else {
+						c.logger.Debug("Delivery receipt sent",
+							zap.String("to", from),
+							zap.String("original_id", msgID),
+						)
+					}
+				}(msg.From, msg.Id)
+			}
 		default:
 			c.logger.Warn("Message channel full, dropping message",
 				zap.String("from", msg.From),
