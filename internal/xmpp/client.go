@@ -151,6 +151,11 @@ func (c *Client) SendMessage(to, body, messageType string) error {
 		msg.Extensions = append(msg.Extensions, stanza.ReceiptRequest{})
 	}
 
+	// XEP-0085: Add active chat state notification for non-groupchat messages
+	if messageType != "groupchat" && body != "" {
+		msg.Extensions = append(msg.Extensions, stanza.StateActive{})
+	}
+
 	if err := c.client.Send(msg); err != nil {
 		c.logger.Error("Failed to send XMPP message",
 			zap.String("to", to),
