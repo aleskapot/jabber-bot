@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"jabber-bot/internal/models"
+	"jabber-bot/internal/xmpp"
 
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
@@ -135,6 +136,66 @@ func (s *Server) handleSendMUCMessage(c *fiber.Ctx) error {
 			"body_length": len(req.Body),
 			"sent_at":     time.Now().UTC().Format(time.RFC3339),
 			"request_id":  c.GetRespHeader("X-Request-ID"),
+		},
+	}
+
+	return c.JSON(response)
+}
+
+// handleSendChatState handles POST /api/v1/chat-state
+func (s *Server) handleSendChatState(c *fiber.Ctx) error {
+	logger := c.Locals("logger").(*zap.Logger)
+	manager := c.Locals("manager").(XMPPManagerInterface)
+
+	var req models.SendChatStateRequest
+	if err := c.BodyParser(&req); err != nil {
+		logger.Warn("Invalid request body",
+			zap.Error(err),
+			zap.String("request_id", c.GetRespHeader("X-Request-ID")),
+		)
+		return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
+	}
+
+	if err := s.validateSendChatStateRequest(&req); err != nil {
+		logger.Warn("Request validation failed",
+			zap.Error(err),
+			zap.String("request_id", c.GetRespHeader("X-Request-ID")),
+		)
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	logger.Info("Sending chat state",
+		zap.String("to", req.To),
+		zap.String("state", req.State),
+		zap.String("request_id", c.GetRespHeader("X-Request-ID")),
+	)
+
+	state := xmpp.ChatState(req.State)
+	err := manager.SendChatState(req.To, state)
+	if err != nil {
+		logger.Error("Failed to send chat state",
+			zap.Error(err),
+			zap.String("to", req.To),
+			zap.String("request_id", c.GetRespHeader("X-Request-ID")),
+		)
+
+		response := models.ErrorResponse{
+			Success: false,
+			Error:   "Failed to send chat state: " + err.Error(),
+			Code:    fiber.StatusInternalServerError,
+		}
+
+		return c.Status(fiber.StatusInternalServerError).JSON(response)
+	}
+
+	response := models.APIResponse{
+		Success: true,
+		Message: "Chat state sent successfully",
+		Data: map[string]interface{}{
+			"to":         req.To,
+			"state":      req.State,
+			"sent_at":    time.Now().UTC().Format(time.RFC3339),
+			"request_id": c.GetRespHeader("X-Request-ID"),
 		},
 	}
 
@@ -423,6 +484,34 @@ func (s *Server) validateSendMUCMessageRequest(req *models.SendMUCMessageRequest
 	// Basic room JID validation
 	if !strings.Contains(req.Room, "@") {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid room JID format")
+	}
+
+	return nil
+}
+
+var validChatStates = map[string]bool{
+	"active":    true,
+	"composing": true,
+	"paused":    true,
+	"inactive":  true,
+	"gone":      true,
+}
+
+func (s *Server) validateSendChatStateRequest(req *models.SendChatStateRequest) error {
+	if strings.TrimSpace(req.To) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "to field is required")
+	}
+
+	if !strings.Contains(req.To, "@") {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JID format")
+	}
+
+	if strings.TrimSpace(req.State) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "state field is required")
+	}
+
+	if !validChatStates[req.State] {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid state. Must be one of: active, composing, paused, inactive, gone")
 	}
 
 	return nil

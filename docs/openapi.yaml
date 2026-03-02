@@ -153,6 +153,59 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/chat-state:
+    post:
+      tags:
+        - Messages
+      summary: Send Chat State Notification
+      description: |-
+        Sends a chat state notification (XEP-0085) to a specified user JID. Chat states indicate the typing status of a user in a chat conversation.
+
+        **Chat States**:
+        - `active` - User is actively participating in the chat session
+        - `composing` - User is composing a message
+        - `paused` - User has paused while composing a message
+        - `inactive` - User has not been actively participating
+        - `gone` - User has ended their participation in the chat session
+
+        **JID Format**: `username@domain.com`
+        
+        **Authentication**: Requires API key via `API-Key` header or `Authorization: Bearer <key>`
+      operationId: sendChatState
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendChatStateRequest'
+            example:
+              to: user@example.com
+              state: composing
+      responses:
+        '200':
+          description: Chat state sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendChatStateResponse'
+              example:
+                success: true
+                message: Chat state sent successfully
+                data:
+                  to: user@example.com
+                  state: composing
+                  sent_at: '2023-12-01T12:00:00Z'
+                  request_id: abc123
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/status:
     get:
       tags:
@@ -302,6 +355,58 @@ components:
           description: Optional room subject/topic
           maxLength: 200
           example: Room Topic
+    SendChatStateRequest:
+      type: object
+      required:
+        - to
+        - state
+      properties:
+        to:
+          type: string
+          description: JID of the message recipient
+          format: xmpp-jid
+          example: user@example.com
+        state:
+          type: string
+          description: Chat state notification
+          enum:
+            - active
+            - composing
+            - paused
+            - inactive
+            - gone
+          example: composing
+    ChatStateResponseData:
+      type: object
+      properties:
+        to:
+          type: string
+          description: Recipient JID
+          example: user@example.com
+        state:
+          type: string
+          description: Chat state that was sent
+          example: composing
+        sent_at:
+          type: string
+          format: date-time
+          description: Timestamp when chat state was sent
+          example: '2023-12-01T12:00:00Z'
+        request_id:
+          type: string
+          description: Unique request identifier
+          example: abc123
+    SendChatStateResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Chat state sent successfully
+        data:
+          $ref: '#/components/schemas/ChatStateResponseData'
     MessageResponseData:
       type: object
       properties:

@@ -33,6 +33,11 @@ func (m *MockXMPPManager) SendMUCMessage(room, body, subject string) error {
 	return args.Error(0)
 }
 
+func (m *MockXMPPManager) SendChatState(to string, state xmpp.ChatState) error {
+	args := m.Called(to, state)
+	return args.Error(0)
+}
+
 func (m *MockXMPPManager) IsConnected() bool {
 	args := m.Called()
 	return args.Bool(0)
@@ -508,6 +513,277 @@ func TestValidateSendMUCMessageRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := server.validateSendMUCMessageRequest(tt.req)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestHandleSendChatState_Success(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{
+		Webhook: config.WebhookConfig{
+			URL: "https://example.com/webhook",
+		},
+	}
+
+	manager := &MockXMPPManager{}
+	manager.On("SendChatState", "test@example.com", xmpp.ChatStateComposing).Return(nil)
+
+	app := fiber.New()
+	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
+
+	reqBody := models.SendChatStateRequest{
+		To:    "test@example.com",
+		State: "composing",
+	}
+
+	bodyBytes, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("POST", "/api/v1/chat-state", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("logger", logger)
+		c.Locals("config", cfg)
+		c.Locals("manager", manager)
+		return c.Next()
+	})
+
+	app.Post("/api/v1/chat-state", server.handleSendChatState)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var response models.APIResponse
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	require.NoError(t, err)
+
+	assert.True(t, response.Success)
+	assert.Equal(t, "Chat state sent successfully", response.Message)
+	assert.NotNil(t, response.Data)
+
+	manager.AssertExpectations(t)
+}
+
+func TestHandleSendChatState_InvalidBody(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{}
+	manager := &MockXMPPManager{}
+
+	app := fiber.New()
+	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
+
+	req := httptest.NewRequest("POST", "/api/v1/chat-state", bytes.NewReader([]byte("invalid json")))
+	req.Header.Set("Content-Type", "application/json")
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("logger", logger)
+		c.Locals("config", cfg)
+		c.Locals("manager", manager)
+		return c.Next()
+	})
+
+	app.Post("/api/v1/chat-state", server.handleSendChatState)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestHandleSendChatState_ValidationError(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{}
+	manager := &MockXMPPManager{}
+
+	app := fiber.New()
+	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("logger", logger)
+		c.Locals("config", cfg)
+		c.Locals("manager", manager)
+		return c.Next()
+	})
+
+	app.Post("/api/v1/chat-state", server.handleSendChatState)
+
+	tests := []struct {
+		name         string
+		req          models.SendChatStateRequest
+		expectedCode int
+	}{
+		{
+			name: "missing to",
+			req: models.SendChatStateRequest{
+				To:    "",
+				State: "composing",
+			},
+			expectedCode: http.StatusBadRequest,
+		},
+		{
+			name: "missing state",
+			req: models.SendChatStateRequest{
+				To:    "test@example.com",
+				State: "",
+			},
+			expectedCode: http.StatusBadRequest,
+		},
+		{
+			name: "invalid state",
+			req: models.SendChatStateRequest{
+				To:    "test@example.com",
+				State: "invalid_state",
+			},
+			expectedCode: http.StatusBadRequest,
+		},
+		{
+			name: "invalid JID",
+			req: models.SendChatStateRequest{
+				To:    "invalid_jid",
+				State: "composing",
+			},
+			expectedCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bodyBytes, _ := json.Marshal(tt.req)
+			req := httptest.NewRequest("POST", "/api/v1/chat-state", bytes.NewReader(bodyBytes))
+			req.Header.Set("Content-Type", "application/json")
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedCode, resp.StatusCode)
+		})
+	}
+}
+
+func TestHandleSendChatState_XMPPError(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{}
+	manager := &MockXMPPManager{}
+
+	expectedError := xmpp.ErrNoDefaultClient
+	manager.On("SendChatState", "test@example.com", xmpp.ChatStateComposing).Return(expectedError)
+
+	app := fiber.New()
+	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
+
+	reqBody := models.SendChatStateRequest{
+		To:    "test@example.com",
+		State: "composing",
+	}
+
+	bodyBytes, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("POST", "/api/v1/chat-state", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("logger", logger)
+		c.Locals("config", cfg)
+		c.Locals("manager", manager)
+		return c.Next()
+	})
+
+	app.Post("/api/v1/chat-state", server.handleSendChatState)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+
+	manager.AssertExpectations(t)
+}
+
+func TestValidateSendChatStateRequest(t *testing.T) {
+	s := &Server{}
+
+	tests := []struct {
+		name    string
+		req     *models.SendChatStateRequest
+		wantErr bool
+	}{
+		{
+			name: "valid request - composing",
+			req: &models.SendChatStateRequest{
+				To:    "test@example.com",
+				State: "composing",
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid request - active",
+			req: &models.SendChatStateRequest{
+				To:    "test@example.com",
+				State: "active",
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid request - paused",
+			req: &models.SendChatStateRequest{
+				To:    "test@example.com",
+				State: "paused",
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid request - inactive",
+			req: &models.SendChatStateRequest{
+				To:    "test@example.com",
+				State: "inactive",
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid request - gone",
+			req: &models.SendChatStateRequest{
+				To:    "test@example.com",
+				State: "gone",
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing to",
+			req: &models.SendChatStateRequest{
+				To:    "",
+				State: "composing",
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing state",
+			req: &models.SendChatStateRequest{
+				To:    "test@example.com",
+				State: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid state",
+			req: &models.SendChatStateRequest{
+				To:    "test@example.com",
+				State: "typing",
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid JID format",
+			req: &models.SendChatStateRequest{
+				To:    "invalid_jid",
+				State: "composing",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := s.validateSendChatStateRequest(tt.req)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {

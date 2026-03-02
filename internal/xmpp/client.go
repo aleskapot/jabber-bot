@@ -202,6 +202,67 @@ func (c *Client) SendMUCMessage(room, body, subject string) error {
 	return nil
 }
 
+// ChatState represents XEP-0085 chat state notifications
+type ChatState string
+
+const (
+	ChatStateActive    ChatState = "active"
+	ChatStateComposing ChatState = "composing"
+	ChatStatePaused    ChatState = "paused"
+	ChatStateInactive  ChatState = "inactive"
+	ChatStateGone      ChatState = "gone"
+)
+
+// SendChatState sends a chat state notification (XEP-0085) to a JID
+func (c *Client) SendChatState(to string, state ChatState) error {
+	if !c.isConnected() {
+		return fmt.Errorf("XMPP client is not connected")
+	}
+
+	var chatState stanza.MsgExtension
+	switch state {
+	case ChatStateActive:
+		chatState = stanza.StateActive{}
+	case ChatStateComposing:
+		chatState = stanza.StateComposing{}
+	case ChatStatePaused:
+		chatState = stanza.StatePaused{}
+	case ChatStateInactive:
+		chatState = stanza.StateInactive{}
+	case ChatStateGone:
+		chatState = stanza.StateGone{}
+	default:
+		return fmt.Errorf("invalid chat state: %s", state)
+	}
+
+	msg := stanza.Message{
+		Attrs: stanza.Attrs{
+			To:   to,
+			Type: stanza.StanzaType("chat"),
+		},
+		Body: "",
+		Extensions: []stanza.MsgExtension{
+			chatState,
+		},
+	}
+
+	if err := c.client.Send(msg); err != nil {
+		c.logger.Error("Failed to send chat state notification",
+			zap.String("to", to),
+			zap.String("state", string(state)),
+			zap.Error(err),
+		)
+		return fmt.Errorf("failed to send chat state: %w", err)
+	}
+
+	c.logger.Info("Chat state notification sent",
+		zap.String("to", to),
+		zap.String("state", string(state)),
+	)
+
+	return nil
+}
+
 // IsConnected returns connection status
 func (c *Client) IsConnected() bool {
 	return c.isConnected()

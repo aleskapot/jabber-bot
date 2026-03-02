@@ -23,6 +23,7 @@ import (
 type XMPPManagerInterface interface {
 	SendMessage(to, body, messageType string) error
 	SendMUCMessage(room, body, subject string) error
+	SendChatState(to string, state xmpp.ChatState) error
 	IsConnected() bool
 	GetDefaultClient() *xmpp.Client
 	GetWebhookChannel() <-chan models.Message
@@ -105,6 +106,7 @@ func (s *Server) setupRoutes() {
 	// Message endpoints (protected)
 	api.Post("/send", s.handleSendMessage)
 	api.Post("/send-muc", s.handleSendMUCMessage)
+	api.Post("/chat-state", s.handleSendChatState)
 
 	// Status endpoints (protected)
 	api.Get("/status", s.handleStatus)

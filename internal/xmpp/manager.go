@@ -120,6 +120,16 @@ func (m *Manager) SendMUCMessage(room, body, subject string) error {
 	return client.SendMUCMessage(room, body, subject)
 }
 
+// SendChatState sends a chat state notification (XEP-0085)
+func (m *Manager) SendChatState(to string, state ChatState) error {
+	client := m.GetDefaultClient()
+	if client == nil {
+		return ErrNoDefaultClient
+	}
+
+	return client.SendChatState(to, state)
+}
+
 // IsConnected checks if default client is connected
 func (m *Manager) IsConnected() bool {
 	client := m.GetDefaultClient()

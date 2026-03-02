@@ -55,3 +55,9 @@ type ErrorResponse struct {
 	Error   string `json:"error"`
 	Code    int    `json:"code"`
 }
+
+// SendChatStateRequest represents API request to send chat state (XEP-0085)
+type SendChatStateRequest struct {
+	To    string `json:"to" validate:"required"`
+	State string `json:"state" validate:"required"`
+}
