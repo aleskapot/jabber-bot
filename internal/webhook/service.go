@@ -15,18 +15,22 @@ import (
 	"go.uber.org/zap"
 )
 
+// MessageCallback is a callback function for webhook delivery success
+type MessageCallback func(message models.Message)
+
 // Service represents webhook service for sending notifications
 type Service struct {
-	config       *config.Config
-	logger       *zap.Logger
-	httpClient   *http.Client
-	messageQueue chan models.Message
-	mu           sync.RWMutex
-	running      bool
-	cancelFunc   context.CancelFunc
-	stats        *Stats
-	testMode     *TestModeUtils
-	wg           sync.WaitGroup
+	config        *config.Config
+	logger        *zap.Logger
+	httpClient    *http.Client
+	messageQueue  chan models.Message
+	mu            sync.RWMutex
+	running       bool
+	cancelFunc    context.CancelFunc
+	stats         *Stats
+	testMode      *TestModeUtils
+	wg            sync.WaitGroup
+	onMessageSent MessageCallback
 }
 
 // Stats contains webhook statistics
@@ -139,6 +143,13 @@ func (s *Service) GetStats() Stats {
 	}
 }
 
+// SetOnMessageSent sets callback for successful message delivery
+func (s *Service) SetOnMessageSent(callback MessageCallback) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onMessageSent = callback
+}
+
 // isRunning checks if service is running (thread-safe)
 func (s *Service) isRunning() bool {
 	s.mu.RLock()
@@ -193,6 +204,15 @@ func (s *Service) sendWebhook(msg models.Message) {
 				zap.String("to", msg.To),
 				zap.String("url", webhookURL),
 			)
+
+			// Call the callback if set
+			s.mu.RLock()
+			callback := s.onMessageSent
+			s.mu.RUnlock()
+			if callback != nil {
+				callback(msg)
+			}
+
 			return
 		}
 

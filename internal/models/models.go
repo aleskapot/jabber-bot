@@ -2,14 +2,15 @@ package models
 
 // Message represents an XMPP message
 type Message struct {
-	ID      string `json:"id"`
-	From    string `json:"from"`
-	To      string `json:"to"`
-	Body    string `json:"body"`
-	Type    string `json:"type"`
-	Subject string `json:"subject"`
-	Thread  string `json:"thread"`
-	Stamp   string `json:"stamp"`
+	ID               string `json:"id"`
+	From             string `json:"from"`
+	To               string `json:"to"`
+	Body             string `json:"body"`
+	Type             string `json:"type"`
+	Subject          string `json:"subject"`
+	Thread           string `json:"thread"`
+	Stamp            string `json:"stamp"`
+	ReceiptRequested bool   `json:"receipt_requested,omitempty"`
 }
 
 // SendMessageRequest represents API request to send a message

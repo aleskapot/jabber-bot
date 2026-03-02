@@ -130,6 +130,16 @@ func (m *Manager) SendChatState(to string, state ChatState) error {
 	return client.SendChatState(to, state)
 }
 
+// SendDeliveryReceipt sends a delivery receipt (XEP-0184)
+func (m *Manager) SendDeliveryReceipt(to, messageID string) error {
+	client := m.GetDefaultClient()
+	if client == nil {
+		return ErrNoDefaultClient
+	}
+
+	return client.SendDeliveryReceipt(to, messageID)
+}
+
 // IsConnected checks if default client is connected
 func (m *Manager) IsConnected() bool {
 	client := m.GetDefaultClient()

@@ -11,6 +11,7 @@ import (
 
 	"jabber-bot/internal/api"
 	"jabber-bot/internal/config"
+	"jabber-bot/internal/models"
 	"jabber-bot/internal/webhook"
 	"jabber-bot/internal/xmpp"
 	"jabber-bot/pkg/logger"
@@ -58,6 +59,19 @@ func main() {
 
 	// Initialize webhook manager
 	webhookManager := webhook.NewManager(cfg, zapLogger, xmppManager)
+
+	// Set up callback for successful webhook delivery to send XEP-0184 receipts
+	webhookManager.GetService().SetOnMessageSent(func(msg models.Message) {
+		if msg.ReceiptRequested && msg.From != "" {
+			if err := xmppManager.SendDeliveryReceipt(msg.From, msg.ID); err != nil {
+				zapLogger.Error("Failed to send delivery receipt",
+					zap.String("to", msg.From),
+					zap.String("message_id", msg.ID),
+					zap.Error(err),
+				)
+			}
+		}
+	})
 
 	// Start webhook manager
 	if err := webhookManager.Start(ctx); err != nil {

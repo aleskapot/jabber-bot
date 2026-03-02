@@ -268,6 +268,39 @@ func (c *Client) SendChatState(to string, state ChatState) error {
 	return nil
 }
 
+// SendDeliveryReceipt sends a delivery receipt (XEP-0184)
+func (c *Client) SendDeliveryReceipt(to, messageID string) error {
+	if to == "" || messageID == "" {
+		return fmt.Errorf("recipient and message ID are required")
+	}
+
+	receipt := stanza.Message{
+		Attrs: stanza.Attrs{
+			To:   to,
+			Type: stanza.StanzaType("chat"),
+		},
+		Extensions: []stanza.MsgExtension{
+			stanza.ReceiptReceived{ID: messageID},
+		},
+	}
+
+	if err := c.client.Send(receipt); err != nil {
+		c.logger.Error("Failed to send delivery receipt",
+			zap.String("to", to),
+			zap.String("message_id", messageID),
+			zap.Error(err),
+		)
+		return fmt.Errorf("failed to send delivery receipt: %w", err)
+	}
+
+	c.logger.Info("Delivery receipt sent",
+		zap.String("to", to),
+		zap.String("message_id", messageID),
+	)
+
+	return nil
+}
+
 // IsConnected returns connection status
 func (c *Client) IsConnected() bool {
 	return c.isConnected()
@@ -292,15 +325,29 @@ func (c *Client) setupHandlers() {
 		}
 
 		// Convert to internal model
+		receiptRequested := false
+		for _, ext := range msg.Extensions {
+			switch ext.(type) {
+			case stanza.ReceiptRequest:
+				receiptRequested = true
+			case *stanza.ReceiptRequest:
+				receiptRequested = true
+			}
+			if receiptRequested {
+				break
+			}
+		}
+
 		message := models.Message{
-			ID:      msg.Id,
-			From:    msg.From,
-			To:      msg.To,
-			Body:    msg.Body,
-			Type:    string(msg.Type),
-			Subject: msg.Subject,
-			Thread:  msg.Thread,
-			Stamp:   "",
+			ID:               msg.Id,
+			From:             msg.From,
+			To:               msg.To,
+			Body:             msg.Body,
+			Type:             string(msg.Type),
+			Subject:          msg.Subject,
+			Thread:           msg.Thread,
+			Stamp:            "",
+			ReceiptRequested: receiptRequested,
 		}
 
 		// Send to channel (non-blocking)
@@ -310,56 +357,8 @@ func (c *Client) setupHandlers() {
 				zap.String("from", msg.From),
 				zap.String("to", msg.To),
 				zap.String("type", string(msg.Type)),
-			)
-
-			// XEP-0184: Send delivery receipt if requested
-			var receiptRequested bool
-			for _, ext := range msg.Extensions {
-				c.logger.Debug("Checking extension",
-					zap.String("type", fmt.Sprintf("%T", ext)),
-				)
-				switch ext.(type) {
-				case stanza.ReceiptRequest:
-					receiptRequested = true
-				case *stanza.ReceiptRequest:
-					receiptRequested = true
-				}
-				if receiptRequested {
-					break
-				}
-			}
-
-			c.logger.Debug("Message processing",
-				zap.String("from", msg.From),
-				zap.String("msg_id", msg.Id),
 				zap.Bool("receipt_requested", receiptRequested),
-				zap.Int("extensions_count", len(msg.Extensions)),
 			)
-
-			if receiptRequested && msg.From != "" {
-				go func(from, msgID string) {
-					receipt := stanza.Message{
-						Attrs: stanza.Attrs{
-							To:   from,
-							Type: stanza.StanzaType("chat"),
-						},
-						Extensions: []stanza.MsgExtension{
-							stanza.ReceiptReceived{ID: msgID},
-						},
-					}
-					if err := c.client.Send(receipt); err != nil {
-						c.logger.Error("Failed to send delivery receipt",
-							zap.String("to", from),
-							zap.Error(err),
-						)
-					} else {
-						c.logger.Debug("Delivery receipt sent",
-							zap.String("to", from),
-							zap.String("original_id", msgID),
-						)
-					}
-				}(msg.From, msg.Id)
-			}
 		default:
 			c.logger.Warn("Message channel full, dropping message",
 				zap.String("from", msg.From),
