@@ -140,6 +140,16 @@ func (m *Manager) SendFile(to, fileURL, fileName, fileType string) error {
 	return client.SendFile(to, fileURL, fileName, fileType)
 }
 
+// SendFileXEP0363 uploads a file via HTTP and sends it using XEP-0363
+func (m *Manager) SendFileXEP0363(to, filePath, fileName, fileType string) error {
+	client := m.GetDefaultClient()
+	if client == nil {
+		return ErrNoDefaultClient
+	}
+
+	return client.SendFileXEP0363(to, filePath, fileName, fileType)
+}
+
 // SendDeliveryReceipt sends a delivery receipt (XEP-0184)
 func (m *Manager) SendDeliveryReceipt(to, messageID string) error {
 	client := m.GetDefaultClient()

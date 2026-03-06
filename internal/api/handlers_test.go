@@ -60,6 +60,11 @@ func (m *MockXMPPManager) SendFile(to, fileURL, fileName, fileType string) error
 	return args.Error(0)
 }
 
+func (m *MockXMPPManager) SendFileXEP0363(to, filePath, fileName, fileType string) error {
+	args := m.Called(to, filePath, fileName, fileType)
+	return args.Error(0)
+}
+
 func TestNewServer(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	cfg := &config.Config{

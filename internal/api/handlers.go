@@ -17,7 +17,6 @@ import (
 
 // handleSendMessage handles POST /api/v1/send
 func (s *Server) handleSendMessage(c *fiber.Ctx) error {
-	//goland:noinspection DuplicatedCode
 	logger := c.Locals("logger").(*zap.Logger)
 	manager := c.Locals("manager").(XMPPManagerInterface)
 
@@ -83,7 +82,6 @@ func (s *Server) handleSendMessage(c *fiber.Ctx) error {
 
 // handleSendMUCMessage handles POST /api/v1/send-muc
 func (s *Server) handleSendMUCMessage(c *fiber.Ctx) error {
-	//goland:noinspection DuplicatedCode
 	logger := c.Locals("logger").(*zap.Logger)
 	manager := c.Locals("manager").(XMPPManagerInterface)
 
@@ -149,6 +147,7 @@ func (s *Server) handleSendMUCMessage(c *fiber.Ctx) error {
 
 // handleSendChatState handles POST /api/v1/chat-state
 func (s *Server) handleSendChatState(c *fiber.Ctx) error {
+	//goland:noinspection DuplicatedCode
 	logger := c.Locals("logger").(*zap.Logger)
 	manager := c.Locals("manager").(XMPPManagerInterface)
 
@@ -641,42 +640,92 @@ func (s *Server) handleSendFile(c *fiber.Ctx) error {
 		fileType = detectMimeType(ext)
 	}
 
-	// Build file URL if BaseURL is configured
+	// Check if we should use XEP-0363 (HTTP File Upload)
+	useXEP0363 := s.config.FileTransfer.UseXEP0363
+
 	var fileURL string
-	if s.config.FileTransfer.BaseURL != "" {
-		fileURL = fmt.Sprintf("%s/%s", strings.TrimRight(s.config.FileTransfer.BaseURL, "/"), uniqueName)
-	}
 
-	logger.Info("File uploaded and saved",
-		zap.String("to", to),
-		zap.String("filename", file.Filename),
-		zap.String("saved_as", uniqueName),
-		zap.Int64("size", file.Size),
-		zap.String("type", fileType),
-		zap.String("url", fileURL),
-		zap.String("request_id", c.GetRespHeader("X-Request-ID")),
-	)
-
-	// Send file via XMPP manager
-	err = manager.SendFile(to, fileURL, file.Filename, fileType)
-	if err != nil {
-		logger.Error("Failed to send file via XMPP",
-			zap.Error(err),
+	if useXEP0363 {
+		logger.Info("Uploading file via XEP-0363 HTTP File Upload",
 			zap.String("to", to),
-			zap.String("file", destPath),
+			zap.String("filename", file.Filename),
+			zap.Int64("size", file.Size),
+			zap.String("type", fileType),
 			zap.String("request_id", c.GetRespHeader("X-Request-ID")),
 		)
 
-		// Clean up file on failure
-		os.Remove(destPath)
+		// Send file via XEP-0363 (HTTP upload through XMPP server)
+		err = manager.SendFileXEP0363(to, destPath, file.Filename, fileType)
+		if err != nil {
+			logger.Error("Failed to send file via XEP-0363",
+				zap.Error(err),
+				zap.String("to", to),
+				zap.String("file", destPath),
+				zap.String("request_id", c.GetRespHeader("X-Request-ID")),
+			)
 
-		response := models.ErrorResponse{
-			Success: false,
-			Error:   "Failed to send file: " + err.Error(),
-			Code:    fiber.StatusInternalServerError,
+			// Clean up file on failure
+			os.Remove(destPath)
+
+			response := models.ErrorResponse{
+				Success: false,
+				Error:   "Failed to upload file: " + err.Error(),
+				Code:    fiber.StatusInternalServerError,
+			}
+
+			return c.Status(fiber.StatusInternalServerError).JSON(response)
 		}
 
-		return c.Status(fiber.StatusInternalServerError).JSON(response)
+		// Delete the local file after successful upload
+		if err := os.Remove(destPath); err != nil {
+			logger.Warn("Failed to delete local file after upload",
+				zap.Error(err),
+				zap.String("path", destPath),
+			)
+		} else {
+			logger.Info("Local file deleted after successful upload",
+				zap.String("path", destPath),
+			)
+		}
+
+		fileURL = fmt.Sprintf("via XEP-0363")
+	} else {
+		// Build file URL if BaseURL is configured (XEP-0066 OOB)
+		if s.config.FileTransfer.BaseURL != "" {
+			fileURL = fmt.Sprintf("%s/%s", strings.TrimRight(s.config.FileTransfer.BaseURL, "/"), uniqueName)
+		}
+
+		logger.Info("File uploaded and saved",
+			zap.String("to", to),
+			zap.String("filename", file.Filename),
+			zap.String("saved_as", uniqueName),
+			zap.Int64("size", file.Size),
+			zap.String("type", fileType),
+			zap.String("url", fileURL),
+			zap.String("request_id", c.GetRespHeader("X-Request-ID")),
+		)
+
+		// Send file via XMPP manager (XEP-0066 OOB)
+		err = manager.SendFile(to, fileURL, file.Filename, fileType)
+		if err != nil {
+			logger.Error("Failed to send file via XMPP",
+				zap.Error(err),
+				zap.String("to", to),
+				zap.String("file", destPath),
+				zap.String("request_id", c.GetRespHeader("X-Request-ID")),
+			)
+
+			// Clean up file on failure
+			os.Remove(destPath)
+
+			response := models.ErrorResponse{
+				Success: false,
+				Error:   "Failed to send file: " + err.Error(),
+				Code:    fiber.StatusInternalServerError,
+			}
+
+			return c.Status(fiber.StatusInternalServerError).JSON(response)
+		}
 	}
 
 	// Build response
@@ -693,11 +742,13 @@ func (s *Server) handleSendFile(c *fiber.Ctx) error {
 		Success: true,
 		Message: "File sent successfully",
 		Data: map[string]interface{}{
-			"to":          to,
-			"description": description,
-			"file":        fileInfo,
-			"sent_at":     time.Now().UTC().Format(time.RFC3339),
-			"request_id":  c.GetRespHeader("X-Request-ID"),
+			"to":            to,
+			"description":   description,
+			"file":          fileInfo,
+			"method":        map[bool]string{true: "XEP-0363 HTTP Upload", false: "XEP-0066 OOB"}[useXEP0363],
+			"local_deleted": useXEP0363,
+			"sent_at":       time.Now().UTC().Format(time.RFC3339),
+			"request_id":    c.GetRespHeader("X-Request-ID"),
 		},
 	}
 

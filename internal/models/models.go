@@ -87,3 +87,9 @@ type SendFileResponse struct {
 	File    FileInfo `json:"file,omitempty"`
 	Error   string   `json:"error,omitempty"`
 }
+
+// UploadSlot represents XEP-0363 HTTP Upload slot response
+type UploadSlot struct {
+	PutURL string `json:"put_url"`
+	GetURL string `json:"get_url"`
+}

@@ -30,3 +30,17 @@ reconnection:
   enabled: true
   max_attempts: 5
   backoff: "5s"
+
+# File Transfer Configuration
+file_transfer:
+  enabled: true
+  max_size: 10485760  # 10 MB in bytes
+  storage_path: "./uploads"  # directory to store uploaded files
+  base_url: "http://localhost:8080/files"  # public URL base for file access
+  retain_days: 7  # days to keep files before cleanup
+  use_xep_0363: true  # use HTTP File Upload (XEP-0363) instead of OOB (XEP-0066)
+
+# HTTP Upload Configuration (XEP-0363)
+http_upload:
+  enabled: true
+  timeout: 60s  # HTTP upload timeout

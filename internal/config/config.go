@@ -15,6 +15,7 @@ type Config struct {
 	Logging      LoggingConfig      `mapstructure:"logging"`
 	Reconnection ReconnectionConfig `mapstructure:"reconnection"`
 	FileTransfer FileTransferConfig `mapstructure:"file_transfer"`
+	HTTPUpload   HTTPUploadConfig   `mapstructure:"http_upload"`
 }
 
 type XMPPConfig struct {
@@ -56,6 +57,12 @@ type FileTransferConfig struct {
 	StoragePath string `mapstructure:"storage_path"` // directory to store uploaded files
 	BaseURL     string `mapstructure:"base_url"`     // public URL base for file access
 	RetainDays  int    `mapstructure:"retain_days"`  // days to keep files before cleanup
+	UseXEP0363  bool   `mapstructure:"use_xep_0363"` // use HTTP File Upload (XEP-0363) instead of OOB (XEP-0066)
+}
+
+type HTTPUploadConfig struct {
+	Enabled bool          `mapstructure:"enabled"`
+	Timeout time.Duration `mapstructure:"timeout"` // HTTP upload timeout
 }
 
 func Load(configPath string) (*Config, error) {
@@ -123,6 +130,9 @@ func Load(configPath string) (*Config, error) {
 	}
 	if config.FileTransfer.RetainDays == 0 {
 		config.FileTransfer.RetainDays = 7
+	}
+	if config.HTTPUpload.Timeout == 0 {
+		config.HTTPUpload.Timeout = 60 * time.Second
 	}
 
 	return &config, nil

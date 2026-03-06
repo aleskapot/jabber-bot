@@ -1,8 +1,13 @@
 package xmpp
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/xml"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -348,6 +353,244 @@ func (c *Client) SendFile(to, fileURL, fileName, fileType string) error {
 		zap.String("file_type", fileType),
 		zap.String("file_url", fileURL),
 	)
+
+	return nil
+}
+
+type UploadSlot struct {
+	PutURL string
+	GetURL string
+}
+
+func (c *Client) discoverUploadService(serverDomain string) (string, error) {
+	iqID := fmt.Sprintf("disco-%d", time.Now().UnixNano())
+
+	iq := stanza.IQ{
+		Attrs: stanza.Attrs{
+			Id:   iqID,
+			Type: stanza.IQTypeGet,
+			To:   serverDomain,
+		},
+		Payload: &stanza.DiscoItems{},
+	}
+
+	respChan, err := c.client.SendIQ(context.Background(), &iq)
+	if err != nil {
+		return "", fmt.Errorf("failed to send service discovery request: %w", err)
+	}
+
+	select {
+	case resp, ok := <-respChan:
+		if !ok {
+			return "", fmt.Errorf("discovery response channel closed")
+		}
+
+		if resp.Attrs.Type == stanza.IQTypeError {
+			return "", fmt.Errorf("service discovery failed")
+		}
+
+		items, ok := resp.Payload.(*stanza.DiscoItems)
+		if !ok {
+			return "", fmt.Errorf("invalid discovery response")
+		}
+
+		for _, item := range items.Items {
+			if strings.Contains(item.JID, "upload") {
+				return item.JID, nil
+			}
+		}
+
+		return "", fmt.Errorf("no upload service found on domain %s", serverDomain)
+
+	case <-time.After(10 * time.Second):
+		return "", fmt.Errorf("service discovery timed out")
+	}
+}
+
+func (c *Client) SendFileXEP0363(to, filePath, fileName, fileType string) error {
+	if !c.isConnected() {
+		return fmt.Errorf("XMPP client is not connected")
+	}
+
+	domain := strings.Split(c.config.XMPP.JID, "@")
+	if len(domain) < 2 {
+		return fmt.Errorf("invalid JID format")
+	}
+	serverDomain := domain[1]
+
+	uploadService, err := c.discoverUploadService(serverDomain)
+	if err != nil {
+		return fmt.Errorf("failed to discover upload service: %w", err)
+	}
+
+	c.logger.Info("Discovered upload service",
+		zap.String("upload_service", uploadService),
+	)
+
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	size := fileInfo.Size()
+	maxSize := c.config.FileTransfer.MaxSize
+	if maxSize > 0 && size > maxSize {
+		return fmt.Errorf("file size %d exceeds maximum allowed %d", size, maxSize)
+	}
+
+	fileData, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	slot, err := c.requestUploadSlot(uploadService, fileName, size, fileType)
+	if err != nil {
+		return fmt.Errorf("failed to request upload slot: %w", err)
+	}
+
+	timeout := c.config.HTTPUpload.Timeout
+	if timeout == 0 {
+		timeout = 60 * time.Second
+	}
+
+	if err := c.uploadFileToURL(slot.PutURL, fileData, fileType, timeout); err != nil {
+		return fmt.Errorf("failed to upload file: %w", err)
+	}
+
+	if err := c.SendFile(to, slot.GetURL, fileName, fileType); err != nil {
+		return fmt.Errorf("failed to send file message: %w", err)
+	}
+
+	c.logger.Info("File uploaded and sent via XEP-0363",
+		zap.String("to", to),
+		zap.String("file", fileName),
+		zap.Int64("size", size),
+		zap.String("get_url", slot.GetURL),
+	)
+
+	return nil
+}
+
+func (c *Client) requestUploadSlot(uploadService, filename string, size int64, contentType string) (*UploadSlot, error) {
+	domain := strings.Split(c.config.XMPP.JID, "@")
+	if len(domain) < 2 {
+		return nil, fmt.Errorf("invalid JID format")
+	}
+	serverDomain := domain[1]
+
+	if !strings.Contains(uploadService, ".") {
+		uploadService = "upload." + serverDomain
+	}
+
+	iqID := fmt.Sprintf("upload-%d", time.Now().UnixNano())
+
+	iq := stanza.IQ{
+		Attrs: stanza.Attrs{
+			Id:   iqID,
+			Type: stanza.IQTypeGet,
+			To:   uploadService,
+			From: c.config.XMPP.JID,
+		},
+		Payload: UploadRequest{
+			Filename:    filename,
+			Size:        size,
+			ContentType: contentType,
+			XMLName: xml.Name{
+				Space: nsHTTPUpload,
+			},
+		},
+	}
+
+	respChan, err := c.client.SendIQ(context.Background(), &iq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send upload slot request: %w", err)
+	}
+
+	c.logger.Debug("Sent upload slot request",
+		zap.String("iq_id", iqID),
+		zap.String("upload_service", uploadService),
+		zap.String("filename", filename),
+		zap.Int64("size", size),
+	)
+
+	select {
+	case resp, ok := <-respChan:
+		if !ok {
+			return nil, fmt.Errorf("response channel closed")
+		}
+
+		if resp.Attrs.Type == stanza.IQTypeError {
+			c.logger.Error("Upload slot request failed",
+				zap.String("iq_id", iqID),
+				zap.String("type", string(resp.Attrs.Type)),
+			)
+			return nil, fmt.Errorf("slot request failed")
+		}
+
+		slot := c.parseSlotResponse(resp)
+		if slot != nil {
+			c.logger.Info("Received upload slot",
+				zap.String("put_url", slot.PutURL),
+				zap.String("get_url", slot.GetURL),
+			)
+			return slot, nil
+		}
+
+		return nil, fmt.Errorf("failed to parse slot response")
+
+	case <-time.After(30 * time.Second):
+		return nil, fmt.Errorf("timeout waiting for slot response")
+	}
+}
+
+func (c *Client) parseSlotResponse(resp stanza.IQ) *UploadSlot {
+	if resp.Payload == nil {
+		c.logger.Debug("No payload in IQ response")
+		return nil
+	}
+
+	slotResp, ok := resp.Payload.(*UploadSlotResponse)
+	if !ok {
+		c.logger.Debug("Payload is not *UploadSlotResponse", zap.String("type", fmt.Sprintf("%T", resp.Payload)))
+		return nil
+	}
+
+	if slotResp.Put.URL == "" || slotResp.Get.URL == "" {
+		c.logger.Debug("Missing URLs in slot response")
+		return nil
+	}
+
+	return &UploadSlot{
+		PutURL: slotResp.Put.URL,
+		GetURL: slotResp.Get.URL,
+	}
+}
+
+func (c *Client) uploadFileToURL(putURL string, fileData []byte, contentType string, timeout time.Duration) error {
+	req, err := http.NewRequest(http.MethodPut, putURL, bytes.NewReader(fileData))
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(fileData)))
+
+	if c.config.XMPP.Password != "" {
+		auth := base64.StdEncoding.EncodeToString([]byte(c.config.XMPP.JID + ":" + c.config.XMPP.Password))
+		req.Header.Set("Authorization", "Basic "+auth)
+	}
+
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to upload file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, string(body))
+	}
 
 	return nil
 }

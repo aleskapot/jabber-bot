@@ -27,6 +27,7 @@ type XMPPManagerInterface interface {
 	SendMUCMessage(room, body, subject string) error
 	SendChatState(to string, state xmpp.ChatState) error
 	SendFile(to, fileURL, fileName, fileType string) error
+	SendFileXEP0363(to, filePath, fileName, fileType string) error
 	IsConnected() bool
 	GetDefaultClient() *xmpp.Client
 	GetWebhookChannel() <-chan models.Message
