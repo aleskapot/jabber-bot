@@ -74,6 +74,15 @@ curl -X POST http://localhost:8080/api/v1/send-muc \
 curl http://localhost:8080/api/v1/status
 ```
 
+### Send File
+```bash
+curl -X POST http://localhost:8080/api/v1/send-file \
+  -H "Content-Type: multipart/form-data" \
+  -F "to=user@example.com" \
+  -F "description=Project documentation" \
+  -F "file=@/path/to/document.pdf"
+```
+
 ## Response Formats
 
 ### Success Response
@@ -290,3 +299,54 @@ For issues and questions:
 - Review the API logs for debugging
 - Use the `/docs` endpoint for comprehensive documentation
 - Examine webhook status for integration issues
+
+## File Upload
+
+### Send File
+**POST /api/v1/send-file**
+Upload and send a file to a user via XMPP using XEP-0363 (HTTP File Upload).
+
+**Request (multipart/form-data):**
+- `to` (required): Recipient JID (e.g., user@example.com)
+- `description` (optional): Description of the file
+- `file` (required): The file to upload
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "File sent successfully",
+  "data": {
+    "to": "user@example.com",
+    "description": "Project documentation",
+    "file": {
+      "name": "document.pdf",
+      "size": 1048576,
+      "type": "application/pdf",
+      "url": "http://localhost:8080/files/document_1700000000000.pdf",
+      "uploaded_at": "2023-12-01T12:00:00Z"
+    },
+    "sent_at": "2023-12-01T12:00:00Z",
+    "request_id": "abc123"
+  }
+}
+```
+
+**How it works:**
+1. File is uploaded to the server's storage directory
+2. File becomes accessible via HTTP URL: `GET /files/{filename}`
+3. XMPP message is sent with XEP-0066 OOB (Out-of-Band) extension containing the HTTP URL
+4. Recipient's XMPP client can download the file from the provided URL
+
+**Configuration:**
+- `file_transfer.max_size`: Maximum file size (default: 10 MB)
+- `file_transfer.storage_path`: Directory for temporary file storage (default: `./uploads`)
+- `file_transfer.base_url`: Base URL for public file access (default: `http://localhost:8080/files`)
+- `file_transfer.retain_days`: Days to keep files before cleanup (default: 7)
+
+**Supported Formats:** Any file type. MIME type is auto-detected from file extension.
+
+**Security:**
+- Files are served from a dedicated `/files/:filename` endpoint
+- Directory traversal protection is implemented
+- Files are stored in a dedicated uploads directory

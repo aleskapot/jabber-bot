@@ -14,6 +14,7 @@ type Config struct {
 	Webhook      WebhookConfig      `mapstructure:"webhook"`
 	Logging      LoggingConfig      `mapstructure:"logging"`
 	Reconnection ReconnectionConfig `mapstructure:"reconnection"`
+	FileTransfer FileTransferConfig `mapstructure:"file_transfer"`
 }
 
 type XMPPConfig struct {
@@ -47,6 +48,14 @@ type ReconnectionConfig struct {
 	Enabled     bool          `mapstructure:"enabled"`
 	MaxAttempts int           `mapstructure:"max_attempts"`
 	Backoff     time.Duration `mapstructure:"backoff"`
+}
+
+type FileTransferConfig struct {
+	Enabled     bool   `mapstructure:"enabled"`
+	MaxSize     int64  `mapstructure:"max_size"`     // in bytes
+	StoragePath string `mapstructure:"storage_path"` // directory to store uploaded files
+	BaseURL     string `mapstructure:"base_url"`     // public URL base for file access
+	RetainDays  int    `mapstructure:"retain_days"`  // days to keep files before cleanup
 }
 
 func Load(configPath string) (*Config, error) {
@@ -102,6 +111,18 @@ func Load(configPath string) (*Config, error) {
 	}
 	if config.Reconnection.Backoff == 0 {
 		config.Reconnection.Backoff = 5 * time.Second
+	}
+	if config.FileTransfer.MaxSize == 0 {
+		config.FileTransfer.MaxSize = 10 * 1024 * 1024 // 10 MB default
+	}
+	if config.FileTransfer.StoragePath == "" {
+		config.FileTransfer.StoragePath = "./uploads"
+	}
+	if config.FileTransfer.BaseURL == "" {
+		config.FileTransfer.BaseURL = "http://localhost:8080/files"
+	}
+	if config.FileTransfer.RetainDays == 0 {
+		config.FileTransfer.RetainDays = 7
 	}
 
 	return &config, nil

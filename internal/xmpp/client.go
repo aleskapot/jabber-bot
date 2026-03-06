@@ -301,6 +301,57 @@ func (c *Client) SendDeliveryReceipt(to, messageID string) error {
 	return nil
 }
 
+// SendFile sends a file to specified JID using OOB (Out-of-Band) URI
+func (c *Client) SendFile(to, fileURL, fileName, fileType string) error {
+	if !c.isConnected() {
+		return fmt.Errorf("XMPP client is not connected")
+	}
+
+	// Create message body with file info
+	body := fmt.Sprintf("File: %s\nType: %s\nURL: %s", fileName, fileType, fileURL)
+
+	msg := stanza.Message{
+		Attrs: stanza.Attrs{
+			To:   to,
+			Type: stanza.StanzaType("chat"),
+		},
+		Body: body,
+	}
+
+	// Add OOB extension with HTTP URL (XEP-0066 Out-of-Band Data)
+	// This allows the recipient to download the file from the provided URL
+	oob := stanza.OOB{
+		URL:  fileURL,
+		Desc: fileName,
+	}
+	msg.Extensions = append(msg.Extensions, oob)
+
+	// Request delivery receipt
+	msg.Extensions = append(msg.Extensions, stanza.ReceiptRequest{})
+
+	// Add active chat state
+	msg.Extensions = append(msg.Extensions, stanza.StateActive{})
+
+	if err := c.client.Send(msg); err != nil {
+		c.logger.Error("Failed to send file",
+			zap.String("to", to),
+			zap.String("file", fileName),
+			zap.String("file_url", fileURL),
+			zap.Error(err),
+		)
+		return fmt.Errorf("failed to send file: %w", err)
+	}
+
+	c.logger.Info("File sent successfully",
+		zap.String("to", to),
+		zap.String("file", fileName),
+		zap.String("file_type", fileType),
+		zap.String("file_url", fileURL),
+	)
+
+	return nil
+}
+
 // IsConnected returns connection status
 func (c *Client) IsConnected() bool {
 	return c.isConnected()

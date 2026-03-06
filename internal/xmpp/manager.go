@@ -130,6 +130,16 @@ func (m *Manager) SendChatState(to string, state ChatState) error {
 	return client.SendChatState(to, state)
 }
 
+// SendFile sends a file to a recipient
+func (m *Manager) SendFile(to, fileURL, fileName, fileType string) error {
+	client := m.GetDefaultClient()
+	if client == nil {
+		return ErrNoDefaultClient
+	}
+
+	return client.SendFile(to, fileURL, fileName, fileType)
+}
+
 // SendDeliveryReceipt sends a delivery receipt (XEP-0184)
 func (m *Manager) SendDeliveryReceipt(to, messageID string) error {
 	client := m.GetDefaultClient()

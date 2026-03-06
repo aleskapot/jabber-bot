@@ -9,6 +9,8 @@ import (
 	"jabber-bot/internal/xmpp"
 	"net"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gofiber/contrib/swagger"
@@ -24,6 +26,7 @@ type XMPPManagerInterface interface {
 	SendMessage(to, body, messageType string) error
 	SendMUCMessage(room, body, subject string) error
 	SendChatState(to string, state xmpp.ChatState) error
+	SendFile(to, fileURL, fileName, fileType string) error
 	IsConnected() bool
 	GetDefaultClient() *xmpp.Client
 	GetWebhookChannel() <-chan models.Message
@@ -107,10 +110,14 @@ func (s *Server) setupRoutes() {
 	api.Post("/send", s.handleSendMessage)
 	api.Post("/send-muc", s.handleSendMUCMessage)
 	api.Post("/chat-state", s.handleSendChatState)
+	api.Post("/send-file", s.handleSendFile)
 
 	// Status endpoints (protected)
 	api.Get("/status", s.handleStatus)
 	api.Get("/webhook/status", s.handleWebhookStatus)
+
+	// File serving endpoint (public) - for XEP-0363 HTTP File Upload
+	s.app.Get("/files/:filename", s.handleServeFile)
 
 	// Documentation (public)
 	s.app.Get("/", s.handleRoot)
@@ -203,4 +210,78 @@ func errorHandler(c *fiber.Ctx, err error) error {
 
 	// Return JSON response
 	return c.Status(response.Code).JSON(response)
+}
+
+// handleServeFile serves files from the upload storage directory
+func (s *Server) handleServeFile(c *fiber.Ctx) error {
+	filename := c.Params("filename")
+	if filename == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "Filename is required")
+	}
+
+	storagePath := s.config.FileTransfer.StoragePath
+	filePath := filepath.Join(storagePath, filename)
+
+	// Security check: ensure the resolved path is within storage directory
+	absStorage, err := filepath.Abs(storagePath)
+	if err != nil {
+		s.logger.Error("Failed to get absolute storage path",
+			zap.Error(err),
+			zap.String("storage_path", storagePath),
+		)
+		return fiber.NewError(fiber.StatusInternalServerError, "Server configuration error")
+	}
+
+	absFile, err := filepath.Abs(filePath)
+	if err != nil {
+		s.logger.Error("Failed to get absolute file path",
+			zap.Error(err),
+			zap.String("file_path", filePath),
+		)
+		return fiber.NewError(fiber.StatusInternalServerError, "Server configuration error")
+	}
+
+	// Check that file is within storage directory (prevent directory traversal)
+	if !strings.HasPrefix(absFile, absStorage+string(filepath.Separator)) && absFile != absStorage {
+		s.logger.Warn("Attempted directory traversal attack",
+			zap.String("requested_file", filename),
+			zap.String("storage_path", storagePath),
+		)
+		return fiber.NewError(fiber.StatusForbidden, "Access denied")
+	}
+
+	// Check if file exists
+	info, err := os.Stat(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fiber.NewError(fiber.StatusNotFound, "File not found")
+		}
+		s.logger.Error("Failed to stat file",
+			zap.Error(err),
+			zap.String("file_path", filePath),
+		)
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to access file")
+	}
+
+	// Check if it's a directory
+	if info.IsDir() {
+		return fiber.NewError(fiber.StatusForbidden, "Cannot serve directories")
+	}
+
+	// Set appropriate content type based on file extension
+	ext := filepath.Ext(filename)
+	mimeType := detectMimeType(ext)
+	c.Set("Content-Type", mimeType)
+
+	// Set cache headers for better performance
+	c.Set("Cache-Control", "public, max-age=3600") // Cache for 1 hour
+
+	s.logger.Debug("Serving file",
+		zap.String("filename", filename),
+		zap.String("file_path", filePath),
+		zap.Int64("size", info.Size()),
+		zap.String("content_type", mimeType),
+	)
+
+	return c.SendFile(filePath, false)
 }

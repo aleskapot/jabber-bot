@@ -62,3 +62,28 @@ type SendChatStateRequest struct {
 	To    string `json:"to" validate:"required"`
 	State string `json:"state" validate:"required"`
 }
+
+// SendFileRequest represents API request to send a file via XMPP
+type SendFileRequest struct {
+	To          string `json:"to" validate:"required"`
+	Description string `json:"description,omitempty"`
+	// File is not in JSON, it's multipart/form-data field
+}
+
+// FileInfo represents metadata about an uploaded file
+type FileInfo struct {
+	Name       string `json:"name"`
+	Size       int64  `json:"size"`
+	Type       string `json:"type"`
+	Path       string `json:"-"`             // internal path, not exposed in API
+	URL        string `json:"url,omitempty"` // public URL if BaseURL configured
+	UploadedAt string `json:"uploaded_at"`
+}
+
+// SendFileResponse represents API response for file send operation
+type SendFileResponse struct {
+	Success bool     `json:"success"`
+	Message string   `json:"message,omitempty"`
+	File    FileInfo `json:"file,omitempty"`
+	Error   string   `json:"error,omitempty"`
+}

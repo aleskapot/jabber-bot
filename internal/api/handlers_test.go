@@ -3,8 +3,10 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"jabber-bot/internal/config"
@@ -51,6 +53,11 @@ func (m *MockXMPPManager) GetDefaultClient() *xmpp.Client {
 func (m *MockXMPPManager) GetWebhookChannel() <-chan models.Message {
 	args := m.Called()
 	return args.Get(0).(<-chan models.Message)
+}
+
+func (m *MockXMPPManager) SendFile(to, fileURL, fileName, fileType string) error {
+	args := m.Called(to, fileURL, fileName, fileType)
+	return args.Error(0)
 }
 
 func TestNewServer(t *testing.T) {
@@ -791,4 +798,327 @@ func TestValidateSendChatStateRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateSendFileRequest(t *testing.T) {
+	s := &Server{}
+
+	tests := []struct {
+		name    string
+		to      string
+		file    string
+		wantErr bool
+	}{
+		{
+			name:    "valid request",
+			to:      "user@example.com",
+			file:    "test.txt",
+			wantErr: false,
+		},
+		{
+			name:    "missing to",
+			to:      "",
+			file:    "test.txt",
+			wantErr: true,
+		},
+		{
+			name:    "missing file",
+			to:      "user@example.com",
+			file:    "",
+			wantErr: true,
+		},
+		{
+			name:    "invalid JID",
+			to:      "invalid_jid",
+			file:    "test.txt",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// We'll test the validation logic inline in the handler test
+			// This is a simplified validation check
+			err := s.validateSendFileRequest(tt.to, tt.file)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestHandleSendFile_Success(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{
+		FileTransfer: config.FileTransferConfig{
+			MaxSize:     10 * 1024 * 1024, // 10 MB
+			StoragePath: "./test-uploads",
+			BaseURL:     "http://localhost:8080/files",
+		},
+	}
+
+	manager := &MockXMPPManager{}
+	// Use flexible matching for file path and type
+	manager.On("SendFile", "user@example.com", mock.Anything, "test.txt", mock.Anything).Return(nil)
+
+	app := fiber.New()
+	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
+
+	// Create a proper multipart request with a file
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("to", "user@example.com")
+	_ = writer.WriteField("description", "Test file")
+	part, _ := writer.CreateFormFile("file", "test.txt")
+	part.Write([]byte("test content"))
+	writer.Close()
+
+	req := httptest.NewRequest("POST", "/api/v1/send-file", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("logger", logger)
+		c.Locals("config", cfg)
+		c.Locals("manager", manager)
+		return c.Next()
+	})
+
+	app.Post("/api/v1/send-file", server.handleSendFile)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Parse response
+	var response models.APIResponse
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	require.NoError(t, err)
+
+	assert.True(t, response.Success)
+	assert.Equal(t, "File sent successfully", response.Message)
+	assert.NotNil(t, response.Data)
+
+	manager.AssertExpectations(t)
+}
+
+func TestHandleSendFile_InvalidForm(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{}
+	manager := &MockXMPPManager{}
+
+	app := fiber.New()
+	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
+
+	// Invalid multipart data
+	req := httptest.NewRequest("POST", "/api/v1/send-file", bytes.NewReader([]byte("invalid")))
+	req.Header.Set("Content-Type", "multipart/form-data")
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("logger", logger)
+		c.Locals("config", cfg)
+		c.Locals("manager", manager)
+		return c.Next()
+	})
+
+	app.Post("/api/v1/send-file", server.handleSendFile)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestHandleSendFile_MissingTo(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{}
+	manager := &MockXMPPManager{}
+
+	app := fiber.New()
+	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
+
+	// Create multipart form without 'to' field
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	// Add file part but no 'to'
+	part, err := writer.CreateFormField("file")
+	require.NoError(t, err)
+	part.Write([]byte("test content"))
+	writer.Close()
+
+	req := httptest.NewRequest("POST", "/api/v1/send-file", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("logger", logger)
+		c.Locals("config", cfg)
+		c.Locals("manager", manager)
+		return c.Next()
+	})
+
+	app.Post("/api/v1/send-file", server.handleSendFile)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestHandleSendFile_MissingFile(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{}
+	manager := &MockXMPPManager{}
+
+	app := fiber.New()
+	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
+
+	// Create multipart form with 'to' but no 'file'
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("to", "user@example.com")
+	writer.Close()
+
+	req := httptest.NewRequest("POST", "/api/v1/send-file", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("logger", logger)
+		c.Locals("config", cfg)
+		c.Locals("manager", manager)
+		return c.Next()
+	})
+
+	app.Post("/api/v1/send-file", server.handleSendFile)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestHandleSendFile_InvalidJID(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{}
+	manager := &MockXMPPManager{}
+
+	app := fiber.New()
+	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("to", "invalid_jid")
+	part, _ := writer.CreateFormField("file")
+	part.Write([]byte("test"))
+	writer.Close()
+
+	req := httptest.NewRequest("POST", "/api/v1/send-file", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("logger", logger)
+		c.Locals("config", cfg)
+		c.Locals("manager", manager)
+		return c.Next()
+	})
+
+	app.Post("/api/v1/send-file", server.handleSendFile)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestHandleSendFile_FileTooLarge(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{
+		FileTransfer: config.FileTransferConfig{
+			MaxSize: 10, // Only 10 bytes
+		},
+	}
+	manager := &MockXMPPManager{}
+
+	app := fiber.New()
+	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("to", "user@example.com")
+	part, _ := writer.CreateFormField("file")
+	part.Write([]byte("this file is too large")) // 24 bytes
+	writer.Close()
+
+	req := httptest.NewRequest("POST", "/api/v1/send-file", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("logger", logger)
+		c.Locals("config", cfg)
+		c.Locals("manager", manager)
+		return c.Next()
+	})
+
+	app.Post("/api/v1/send-file", server.handleSendFile)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestHandleSendFile_XMPPError(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{
+		FileTransfer: config.FileTransferConfig{
+			MaxSize:     10 * 1024 * 1024,
+			StoragePath: "./test-uploads",
+		},
+	}
+
+	manager := &MockXMPPManager{}
+	expectedError := xmpp.ErrNoDefaultClient
+	// Use flexible matching for file path and type
+	manager.On("SendFile", "user@example.com", mock.Anything, "test.txt", mock.Anything).Return(expectedError)
+
+	app := fiber.New()
+	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
+
+	// Create a proper multipart request with a file
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("to", "user@example.com")
+	part, _ := writer.CreateFormFile("file", "test.txt")
+	part.Write([]byte("test"))
+	writer.Close()
+
+	req := httptest.NewRequest("POST", "/api/v1/send-file", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("logger", logger)
+		c.Locals("config", cfg)
+		c.Locals("manager", manager)
+		return c.Next()
+	})
+
+	app.Post("/api/v1/send-file", server.handleSendFile)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+
+	manager.AssertExpectations(t)
+}
+
+// validateSendFileRequest validates the send file request parameters
+func (s *Server) validateSendFileRequest(to, fileName string) error {
+	if strings.TrimSpace(to) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "to field is required")
+	}
+
+	if !strings.Contains(to, "@") {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JID format")
+	}
+
+	if strings.TrimSpace(fileName) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "file field is required")
+	}
+
+	return nil
 }

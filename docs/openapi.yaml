@@ -206,6 +206,121 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/send-file:
+    post:
+      tags:
+        - Messages
+      summary: Send File via XMPP (XEP-0363)
+      description: |-
+        Uploads a file and sends it to a specified user JID via XMPP using XEP-0363 (HTTP File Upload) combined with XEP-0066 (Out-of-Band Data).
+
+        **How it works:**
+        1. File is uploaded to the server's storage directory
+        2. File becomes accessible via HTTP URL: `GET /files/{filename}`
+        3. XMPP message is sent with XEP-0066 OOB extension containing the HTTP URL
+        4. Recipient's XMPP client can download the file from the provided URL
+
+        **File Size Limit**: Configured via `file_transfer.max_size` (default: 10 MB)
+        **Storage**: Files are saved to `file_transfer.storage_path` with unique names
+        **Public URL**: Constructed using `file_transfer.base_url` (default: `http://localhost:8080/files`)
+        **Retention**: Files are kept for `file_transfer.retain_days` (default: 7 days)
+
+        **Supported Formats**: Any file type. MIME type is auto-detected from file extension.
+
+        **Authentication**: Requires API key via `API-Key` header or `Authorization: Bearer <key>`
+      operationId: sendFile
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                to:
+                  type: string
+                  description: Recipient JID (e.g., user@example.com)
+                  example: user@example.com
+                description:
+                  type: string
+                  description: Optional description of the file
+                  example: Project documentation
+                file:
+                  type: string
+                  format: binary
+                  description: File to upload
+              required:
+                - to
+                - file
+      responses:
+        '200':
+          description: File sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendFileResponse'
+              example:
+                success: true
+                message: File sent successfully
+                data:
+                  to: user@example.com
+                  description: Project documentation
+                  file:
+                    name: document.pdf
+                    size: 1048576
+                    type: application/pdf
+                    path: ./uploads/document_1700000000000.pdf
+                    url: http://localhost:8080/files/document_1700000000000.pdf
+                    uploaded_at: '2023-12-01T12:00:00Z'
+                  sent_at: '2023-12-01T12:00:00Z'
+                  request_id: abc123
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /files/{filename}:
+    get:
+      tags:
+        - Files
+      summary: Download uploaded file
+      description: |-
+        Serves files that were uploaded via the send-file endpoint. This endpoint is publicly accessible without authentication to allow XMPP recipients to download files.
+
+        Files are served with appropriate Content-Type headers based on file extension.
+        The endpoint includes security checks to prevent directory traversal attacks.
+
+        **Note**: Files are stored temporarily and may be cleaned up based on `file_transfer.retain_days` configuration.
+      operationId: serveFile
+      security: []
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          description: Name of the file to download (as returned in the upload response)
+          schema:
+            type: string
+            example: document_1700000000000.pdf
+      responses:
+        '200':
+          description: File served successfully
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
   /api/v1/status:
     get:
       tags:
@@ -407,6 +522,61 @@ components:
           example: Chat state sent successfully
         data:
           $ref: '#/components/schemas/ChatStateResponseData'
+    FileInfo:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Original filename
+          example: document.pdf
+        size:
+          type: integer
+          description: File size in bytes
+          example: 1048576
+        type:
+          type: string
+          description: MIME type
+          example: application/pdf
+        url:
+          type: string
+          description: Public URL to access the file (if base_url configured)
+          example: http://localhost:8080/files/document_1700000000000.pdf
+        uploaded_at:
+          type: string
+          format: date-time
+          description: Timestamp when file was uploaded
+          example: '2023-12-01T12:00:00Z'
+    SendFileResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: File sent successfully
+        data:
+          type: object
+          properties:
+            to:
+              type: string
+              description: Recipient JID
+              example: user@example.com
+            description:
+              type: string
+              description: Optional description provided with the file
+              example: Project documentation
+            file:
+              $ref: '#/components/schemas/FileInfo'
+            sent_at:
+              type: string
+              format: date-time
+              description: Timestamp when file was sent
+              example: '2023-12-01T12:00:00Z'
+            request_id:
+              type: string
+              description: Unique request identifier
+              example: abc123
     MessageResponseData:
       type: object
       properties:
@@ -611,7 +781,7 @@ components:
             error: Invalid JID format
             code: 400
     Unauthorized:
-      description: Unauthorized - invalid or missing API key
+      description: Unauthorized - valid or missing API key
       content:
         application/json:
           schema:

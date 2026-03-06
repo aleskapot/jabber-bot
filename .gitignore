@@ -41,6 +41,7 @@ configs/production.yaml
 # Temporary files
 tmp/
 temp/
+uploads/
 
 # Environment files
 .env

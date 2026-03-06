@@ -89,6 +89,8 @@ make run
 |--------|----------|-------------|
 | `POST` | `/api/v1/send` | Send message to XMPP user |
 | `POST` | `/api/v1/send-muc` | Send message to group chat |
+| `POST` | `/api/v1/send-file` | Upload and send file via XMPP (XEP-0363) |
+| `GET` | `/files/:filename` | Download uploaded file (public) |
 | `GET` | `/api/v1/status` | Get bot status and statistics |
 | `GET` | `/api/v1/health` | Simple health check |
 | `GET` | `/api/v1/webhook/status` | Webhook service status |
@@ -103,6 +105,15 @@ curl -X POST http://localhost:8080/api/v1/send \
     "to": "friend@example.com",
     "body": "Hello from Jabber Bot! 🤖"
   }'
+
+# Send a file (XEP-0363 HTTP File Upload)
+curl -X POST http://localhost:8080/api/v1/send-file \
+  -F "to=friend@example.com" \
+  -F "description=Project screenshot" \
+  -F "file=@/path/to/screenshot.png"
+
+# The recipient will receive an XMPP message with OOB extension containing
+# a public URL to download the file: http://localhost:8080/files/{filename}
 ```
 
 ## 🐳 Docker Deployment

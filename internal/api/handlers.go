@@ -1,6 +1,10 @@
 package api
 
 import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -79,6 +83,7 @@ func (s *Server) handleSendMessage(c *fiber.Ctx) error {
 
 // handleSendMUCMessage handles POST /api/v1/send-muc
 func (s *Server) handleSendMUCMessage(c *fiber.Ctx) error {
+	//goland:noinspection DuplicatedCode
 	logger := c.Locals("logger").(*zap.Logger)
 	manager := c.Locals("manager").(XMPPManagerInterface)
 
@@ -282,6 +287,7 @@ func (s *Server) handleRoot(c *fiber.Ctx) error {
 		"endpoints": map[string]string{
 			"send":         "/api/v1/send - Send XMPP message",
 			"send_muc":     "/api/v1/send-muc - Send MUC message",
+			"send_file":    "/api/v1/send-file - Send file via XMPP",
 			"status":       "/api/v1/status - Get bot status",
 			"health":       "/api/v1/health - Health check",
 			"webhook":      "/api/v1/webhook/status - Get webhook status",
@@ -358,6 +364,41 @@ Send a message to a Multi-User Chat room.
     "request_id": "abc123"
   }
 }
+
+### Send File
+**POST /api/v1/send-file**
+Upload and send a file to a user via XMPP using XEP-0066 (Out-of-Band Data).
+
+**Request (multipart/form-data):**
+- to (required): Recipient JID (e.g., user@example.com)
+- description (optional): Description of the file
+- file (required): The file to upload
+
+**Response:**
+{
+  "success": true,
+  "message": "File sent successfully",
+  "data": {
+    "to": "user@example.com",
+    "description": "Project documentation",
+    "file": {
+      "name": "document.pdf",
+      "size": 1048576,
+      "type": "application/pdf",
+      "url": "http://localhost:8080/files/document_1700000000000.pdf",
+      "uploaded_at": "2023-12-01T12:00:00Z"
+    },
+    "sent_at": "2023-12-01T12:00:00Z",
+    "request_id": "abc123"
+  }
+}
+
+**Configuration:**
+- file_transfer.max_size: Maximum file size (default: 10 MB)
+- file_transfer.storage_path: Directory for temporary file storage
+- file_transfer.base_url: Base URL for public file access (optional)
+
+**Supported Formats:** Any file type. MIME type is auto-detected from file extension.
 
 ### Get Status
 **GET /api/v1/status**
@@ -515,4 +556,178 @@ func (s *Server) validateSendChatStateRequest(req *models.SendChatStateRequest) 
 	}
 
 	return nil
+}
+
+// handleSendFile handles POST /api/v1/send-file
+func (s *Server) handleSendFile(c *fiber.Ctx) error {
+	logger := c.Locals("logger").(*zap.Logger)
+	manager := c.Locals("manager").(XMPPManagerInterface)
+
+	// Get fields
+	to := c.FormValue("to")
+	description := c.FormValue("description")
+	file, err := c.FormFile("file")
+	if err != nil {
+		logger.Warn("File not provided",
+			zap.Error(err),
+			zap.String("request_id", c.GetRespHeader("X-Request-ID")),
+		)
+		return fiber.NewError(fiber.StatusBadRequest, "File is required")
+	}
+
+	// Validate recipient
+	if strings.TrimSpace(to) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "to field is required")
+	}
+
+	if !strings.Contains(to, "@") {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JID format")
+	}
+
+	// Check file size limit
+	if file.Size > s.config.FileTransfer.MaxSize {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("File too large. Maximum size is %d bytes", s.config.FileTransfer.MaxSize))
+	}
+
+	// Ensure storage directory exists
+	storagePath := s.config.FileTransfer.StoragePath
+	if err := os.MkdirAll(storagePath, 0755); err != nil {
+		logger.Error("Failed to create storage directory",
+			zap.Error(err),
+			zap.String("storage_path", storagePath),
+		)
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to prepare file storage")
+	}
+
+	// Generate unique filename
+	ext := filepath.Ext(file.Filename)
+	baseName := strings.TrimSuffix(filepath.Base(file.Filename), ext)
+	uniqueName := fmt.Sprintf("%s_%d%s", baseName, time.Now().UnixNano(), ext)
+	destPath := filepath.Join(storagePath, uniqueName)
+
+	// Save the file
+	src, err := file.Open()
+	if err != nil {
+		logger.Error("Failed to open uploaded file",
+			zap.Error(err),
+			zap.String("request_id", c.GetRespHeader("X-Request-ID")),
+		)
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to open uploaded file")
+	}
+	defer src.Close()
+
+	dst, err := os.Create(destPath)
+	if err != nil {
+		logger.Error("Failed to create destination file",
+			zap.Error(err),
+			zap.String("path", destPath),
+		)
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to save file")
+	}
+	defer dst.Close()
+
+	if _, err = io.Copy(dst, src); err != nil {
+		logger.Error("Failed to save file",
+			zap.Error(err),
+			zap.String("path", destPath),
+		)
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to save file")
+	}
+
+	// Determine file type (MIME)
+	fileType := file.Header.Get("Content-Type")
+	if fileType == "" {
+		// Try to detect from extension
+		fileType = detectMimeType(ext)
+	}
+
+	// Build file URL if BaseURL is configured
+	var fileURL string
+	if s.config.FileTransfer.BaseURL != "" {
+		fileURL = fmt.Sprintf("%s/%s", strings.TrimRight(s.config.FileTransfer.BaseURL, "/"), uniqueName)
+	}
+
+	logger.Info("File uploaded and saved",
+		zap.String("to", to),
+		zap.String("filename", file.Filename),
+		zap.String("saved_as", uniqueName),
+		zap.Int64("size", file.Size),
+		zap.String("type", fileType),
+		zap.String("url", fileURL),
+		zap.String("request_id", c.GetRespHeader("X-Request-ID")),
+	)
+
+	// Send file via XMPP manager
+	err = manager.SendFile(to, fileURL, file.Filename, fileType)
+	if err != nil {
+		logger.Error("Failed to send file via XMPP",
+			zap.Error(err),
+			zap.String("to", to),
+			zap.String("file", destPath),
+			zap.String("request_id", c.GetRespHeader("X-Request-ID")),
+		)
+
+		// Clean up file on failure
+		os.Remove(destPath)
+
+		response := models.ErrorResponse{
+			Success: false,
+			Error:   "Failed to send file: " + err.Error(),
+			Code:    fiber.StatusInternalServerError,
+		}
+
+		return c.Status(fiber.StatusInternalServerError).JSON(response)
+	}
+
+	// Build response
+	fileInfo := models.FileInfo{
+		Name:       file.Filename,
+		Size:       file.Size,
+		Type:       fileType,
+		Path:       destPath,
+		URL:        fileURL,
+		UploadedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	response := models.APIResponse{
+		Success: true,
+		Message: "File sent successfully",
+		Data: map[string]interface{}{
+			"to":          to,
+			"description": description,
+			"file":        fileInfo,
+			"sent_at":     time.Now().UTC().Format(time.RFC3339),
+			"request_id":  c.GetRespHeader("X-Request-ID"),
+		},
+	}
+
+	return c.JSON(response)
+}
+
+// detectMimeType detects MIME type from file extension
+func detectMimeType(ext string) string {
+	switch strings.ToLower(ext) {
+	case ".txt":
+		return "text/plain"
+	case ".pdf":
+		return "application/pdf"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".mp4":
+		return "video/mp4"
+	case ".zip":
+		return "application/zip"
+	case ".json":
+		return "application/json"
+	case ".xml":
+		return "application/xml"
+	default:
+		return "application/octet-stream"
+	}
 }
