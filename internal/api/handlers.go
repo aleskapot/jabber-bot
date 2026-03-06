@@ -623,14 +623,21 @@ func (s *Server) handleSendFile(c *fiber.Ctx) error {
 		)
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to save file")
 	}
-	defer dst.Close()
 
 	if _, err = io.Copy(dst, src); err != nil {
+		dst.Close()
 		logger.Error("Failed to save file",
 			zap.Error(err),
 			zap.String("path", destPath),
 		)
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to save file")
+	}
+
+	if err := dst.Close(); err != nil {
+		logger.Error("Failed to close destination file",
+			zap.Error(err),
+			zap.String("path", destPath),
+		)
 	}
 
 	// Determine file type (MIME)
