@@ -664,6 +664,7 @@ func (c *Client) GetMessageChannel() <-chan models.Message {
 
 // setupHandlers sets up XMPP message handlers
 func (c *Client) setupHandlers() {
+	// Message received handler
 	c.router.HandleFunc("message", func(s xmpp.Sender, p stanza.Packet) {
 		msg, ok := p.(stanza.Message)
 		if !ok {
@@ -714,6 +715,47 @@ func (c *Client) setupHandlers() {
 			c.logger.Warn("Message channel full, dropping message",
 				zap.String("from", msg.From),
 			)
+		}
+	})
+
+	// Information query received handler
+	c.router.HandleFunc("iq", func(s xmpp.Sender, p stanza.Packet) {
+		iq, ok := p.(*stanza.IQ)
+		if !ok {
+			return
+		}
+
+		if iq.Type != stanza.IQTypeGet {
+			return
+		}
+
+		if iq.Payload == nil {
+			return
+		}
+
+		switch iq.Payload.(type) {
+		case *stanza.Version:
+			c.logger.Debug("Received version query from server",
+				zap.String("from", iq.From),
+				zap.String("id", iq.Id),
+			)
+
+			versionResp := stanza.IQ{
+				Attrs: stanza.Attrs{
+					Id:   iq.Id,
+					Type: stanza.IQTypeResult,
+					To:   iq.From,
+					From: iq.To,
+				},
+				Payload: &stanza.Version{},
+			}
+			versionResp.Payload.(*stanza.Version).SetInfo("jabber-bot", "1.0.0", "Linux")
+
+			if err := s.Send(&versionResp); err != nil {
+				c.logger.Error("Failed to send version response",
+					zap.Error(err),
+				)
+			}
 		}
 	})
 }
