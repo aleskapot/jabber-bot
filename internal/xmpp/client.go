@@ -3,6 +3,7 @@ package xmpp
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
@@ -21,6 +22,11 @@ import (
 	"gosrc.io/xmpp"
 	"gosrc.io/xmpp/stanza"
 )
+
+type UploadSlot struct {
+	PutURL string
+	GetURL string
+}
 
 // Client represents XMPP client
 type Client struct {
@@ -212,17 +218,6 @@ func (c *Client) SendMUCMessage(room, body, subject string) error {
 	return nil
 }
 
-// ChatState represents XEP-0085 chat state notifications
-type ChatState string
-
-const (
-	ChatStateActive    ChatState = "active"
-	ChatStateComposing ChatState = "composing"
-	ChatStatePaused    ChatState = "paused"
-	ChatStateInactive  ChatState = "inactive"
-	ChatStateGone      ChatState = "gone"
-)
-
 // SendChatState sends a chat state notification (XEP-0085) to a JID
 func (c *Client) SendChatState(to string, state ChatState) error {
 	if !c.isConnected() {
@@ -357,11 +352,6 @@ func (c *Client) SendFile(to, fileURL, fileName, fileType string) error {
 	return nil
 }
 
-type UploadSlot struct {
-	PutURL string
-	GetURL string
-}
-
 func (c *Client) discoverUploadService(serverDomain string) (string, error) {
 	iqID := fmt.Sprintf("disco-%d", time.Now().UnixNano())
 
@@ -448,7 +438,7 @@ func (c *Client) SendFileXEP0363(to, filePath, fileName, fileType string) error 
 		return fmt.Errorf("failed to request upload slot: %w", err)
 	}
 
-	timeout := c.config.HTTPUpload.Timeout
+	timeout := c.config.FileTransfer.Timeout
 	if timeout == 0 {
 		timeout = 60 * time.Second
 	}
@@ -457,7 +447,7 @@ func (c *Client) SendFileXEP0363(to, filePath, fileName, fileType string) error 
 		return fmt.Errorf("failed to upload file: %w", err)
 	}
 
-	if err := c.SendFile(to, slot.GetURL, fileName, fileType); err != nil {
+	if err := c.sendFileWithXEP0447(to, slot.GetURL, fileName, fileType, size, fileData); err != nil {
 		return fmt.Errorf("failed to send file message: %w", err)
 	}
 
@@ -466,6 +456,72 @@ func (c *Client) SendFileXEP0363(to, filePath, fileName, fileType string) error 
 		zap.String("file", fileName),
 		zap.Int64("size", size),
 		zap.String("get_url", slot.GetURL),
+	)
+
+	return nil
+}
+
+func (c *Client) sendFileWithXEP0447(to, fileURL, fileName, fileType string, size int64, fileData []byte) error {
+	hash := sha256.Sum256(fileData)
+	hashBase64 := base64.StdEncoding.EncodeToString(hash[:])
+
+	msg := stanza.Message{
+		Attrs: stanza.Attrs{
+			To:   to,
+			From: c.config.XMPP.JID,
+			Type: stanza.StanzaType("chat"),
+		},
+		Body: fileURL,
+	}
+
+	fileSharing := FileSharing{
+		Disposition: "inline",
+		File: &FileMetadata{
+			MediaType: fileType,
+			Name:      fileName,
+			Size:      size,
+			Hashes: []FileHash{
+				{
+					Algo:  "sha-256",
+					Value: hashBase64,
+				},
+			},
+			Desc: fileName,
+		},
+		Sources: &FileSources{
+			URLSources: []URLDataSource{
+				{
+					Target: fileURL,
+				},
+			},
+		},
+	}
+
+	msg.Extensions = append(msg.Extensions, fileSharing)
+
+	oob := stanza.OOB{
+		URL:  fileURL,
+		Desc: fileName,
+	}
+	msg.Extensions = append(msg.Extensions, oob)
+
+	msg.Extensions = append(msg.Extensions, stanza.ReceiptRequest{})
+	msg.Extensions = append(msg.Extensions, stanza.StateActive{})
+
+	if err := c.client.Send(msg); err != nil {
+		c.logger.Error("Failed to send file via XEP-0447",
+			zap.String("to", to),
+			zap.String("file", fileName),
+			zap.String("file_url", fileURL),
+			zap.Error(err),
+		)
+		return fmt.Errorf("failed to send file: %w", err)
+	}
+
+	c.logger.Info("File sent via XEP-0447",
+		zap.String("to", to),
+		zap.String("file", fileName),
+		zap.String("url", fileURL),
 	)
 
 	return nil
@@ -585,6 +641,7 @@ func (c *Client) uploadFileToURL(putURL string, fileData []byte, contentType str
 	if err != nil {
 		return fmt.Errorf("failed to upload file: %w", err)
 	}
+	//goland:noinspection GoUnhandledErrorResult
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

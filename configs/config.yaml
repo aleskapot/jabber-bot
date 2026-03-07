@@ -39,8 +39,4 @@ file_transfer:
   base_url: "http://localhost:8080/files"  # public URL base for file access
   retain_days: 7  # days to keep files before cleanup
   use_xep_0363: true  # use HTTP File Upload (XEP-0363) instead of OOB (XEP-0066)
-
-# HTTP Upload Configuration (XEP-0363)
-http_upload:
-  enabled: true
-  timeout: 60s  # HTTP upload timeout
+  upload_timeout: 60s  # HTTP upload timeout (XEP-0363)
