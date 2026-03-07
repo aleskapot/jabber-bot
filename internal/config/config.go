@@ -51,14 +51,13 @@ type ReconnectionConfig struct {
 }
 
 type FileTransferConfig struct {
-	Enabled     bool   `mapstructure:"enabled"`
-	MaxSize     int64  `mapstructure:"max_size"`     // in bytes
-	StoragePath string `mapstructure:"storage_path"` // directory to store uploaded files
-	BaseURL     string `mapstructure:"base_url"`     // public URL base for file access
-	// TODO: Make RetainDays work
-	RetainDays int           `mapstructure:"retain_days"`    // days to keep files before cleanup
-	UseXEP0363 bool          `mapstructure:"use_xep_0363"`   // use HTTP File Upload (XEP-0363) instead of OOB (XEP-0066)
-	Timeout    time.Duration `mapstructure:"upload_timeout"` // HTTP File Upload (XEP-0363) timeout
+	Enabled     bool          `mapstructure:"enabled"`
+	MaxSize     int64         `mapstructure:"max_size"`       // in bytes
+	StoragePath string        `mapstructure:"storage_path"`   // directory to store uploaded files
+	BaseURL     string        `mapstructure:"base_url"`       // public URL base for file access
+	RetainHours int           `mapstructure:"retain_hours"`   // hours to keep files before cleanup (0 = no cleanup)
+	UseXEP0363  bool          `mapstructure:"use_xep_0363"`   // use HTTP File Upload (XEP-0363) instead of OOB (XEP-0066)
+	Timeout     time.Duration `mapstructure:"upload_timeout"` // HTTP File Upload (XEP-0363) timeout
 }
 
 func Load(configPath string) (*Config, error) {
@@ -124,8 +123,10 @@ func Load(configPath string) (*Config, error) {
 	if config.FileTransfer.BaseURL == "" {
 		config.FileTransfer.BaseURL = "http://localhost:8080/files"
 	}
-	if config.FileTransfer.RetainDays == 0 {
-		config.FileTransfer.RetainDays = 7
+	// RetainHours = 0 means no automatic cleanup (files are kept forever)
+	// Default to 24 hours if not specified
+	if config.FileTransfer.RetainHours == 0 {
+		config.FileTransfer.RetainHours = 24
 	}
 	if config.FileTransfer.Timeout == 0 {
 		config.FileTransfer.Timeout = 60 * time.Second

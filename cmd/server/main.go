@@ -11,6 +11,7 @@ import (
 
 	"jabber-bot/internal/api"
 	"jabber-bot/internal/config"
+	"jabber-bot/internal/filemanager"
 	"jabber-bot/internal/models"
 	"jabber-bot/internal/webhook"
 	"jabber-bot/internal/xmpp"
@@ -88,6 +89,12 @@ func main() {
 		}
 	}()
 
+	// Initialize file cleanup manager
+	fileManager := filemanager.NewManager(cfg, zapLogger)
+	if err := fileManager.Start(ctx); err != nil {
+		zapLogger.Fatal("Failed to start file manager", zap.Error(err))
+	}
+
 	zapLogger.Info("Jabber bot started successfully")
 
 	// When an interrupt or termination signal is sent, stop the server gracefully
@@ -103,6 +110,11 @@ func main() {
 	// Stop webhook manager FIRST (to stop reading from XMPP channel)
 	if err := webhookManager.Stop(); err != nil {
 		zapLogger.Error("Error stopping webhook manager", zap.Error(err))
+	}
+
+	// Stop file manager
+	if err := fileManager.Stop(); err != nil {
+		zapLogger.Error("Error stopping file manager", zap.Error(err))
 	}
 
 	// Stop XMPP manager (this closes webhookChan)
