@@ -42,6 +42,7 @@ configs/production.yaml
 tmp/
 temp/
 uploads/
+internal/api/test-uploads/
 
 # Environment files
 .env
