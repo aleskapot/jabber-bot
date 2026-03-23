@@ -58,6 +58,9 @@ COPY --from=builder /app/bin/jabber-bot .
 # Copy configuration files
 COPY --from=builder /app/configs ./configs
 
+# Copy documentation files (OpenAPI specs for Swagger)
+COPY --from=builder /app/docs ./docs
+
 # Create directories for logs and data
 RUN mkdir -p /app/logs /app/data && \
     chown -R jabber:jabber /app
@@ -70,7 +73,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/v1/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/api/v1/health || exit 1
 
 # Default command
 CMD ["./jabber-bot", "-config", "configs/config.yaml"]
