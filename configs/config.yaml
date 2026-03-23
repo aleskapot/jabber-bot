@@ -1,8 +1,8 @@
 # XMPP Configuration
 xmpp:
-  jid: "bot@jabber.org"
-  password: "bot-password"
-  server: "jabber.org:5222"
+  jid: "bot@jabber.skbis.ru"
+  password: "7eAuZXdLQq"
+  server: "jabber.skbis.ru:5222"
   resource: "bot"
   
 # REST API Configuration

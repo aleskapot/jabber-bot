@@ -5,7 +5,8 @@
     "description": "XMPP Jabber bot with RESTful API for sending messages, monitoring status, and webhook integration. This API provides endpoints for sending XMPP messages to users and chat rooms, monitoring bot status and health, webhook management and statistics, and real-time message forwarding to configured webhooks. The bot connects to XMPP servers and provides a simple HTTP interface for bot operations.",
     "version": "1.0.0",
     "contact": {
-      "name": "Jabber Bot API Support"
+      "name": "Jabber Bot API Support",
+      "url": "https://github.com/aleskapot/jabber-bot"
     },
     "license": {
       "name": "MIT"

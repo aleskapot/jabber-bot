@@ -5,6 +5,7 @@ info:
   version: 1.0.0
   contact:
     name: Jabber Bot API Support
+    url: 'https://github.com/aleskapot/jabber-bot'
   license:
     name: MIT
 servers:
@@ -65,7 +66,7 @@ paths:
         - `groupchat` - Group chat message
         - `headline` - News headline
         - `normal` - Normal message
-        
+
         **Authentication**: Requires API key via `API-Key` header or `Authorization: Bearer <key>`
       operationId: sendMessage
       security:
@@ -114,7 +115,7 @@ paths:
 
         **Room JID Format**: `roomname@conference.domain.com`
         **Subject**: Optional - sets/changes the room subject/topic
-        
+
         **Authentication**: Requires API key via `API-Key` header or `Authorization: Bearer <key>`
       operationId: sendMUCMessage
       security:
@@ -169,7 +170,7 @@ paths:
         - `gone` - User has ended their participation in the chat session
 
         **JID Format**: `username@domain.com`
-        
+
         **Authentication**: Requires API key via `API-Key` header or `Authorization: Bearer <key>`
       operationId: sendChatState
       security:
@@ -212,22 +213,23 @@ paths:
         - Messages
       summary: Send File via XMPP (XEP-0363)
       description: |-
-        Uploads a file and sends it to a specified user JID via XMPP using XEP-0363 (HTTP File Upload) combined with XEP-0066 (Out-of-Band Data).
+        |-
+                Uploads a file and sends it to a specified user JID via XMPP using XEP-0363 (HTTP File Upload) combined with XEP-0066 (Out-of-Band Data).
 
-        **How it works:**
-        1. File is uploaded to the server's storage directory
-        2. File becomes accessible via HTTP URL: `GET /files/{filename}`
-        3. XMPP message is sent with XEP-0066 OOB extension containing the HTTP URL
-        4. Recipient's XMPP client can download the file from the provided URL
+                **How it works:**
+                1. File is uploaded to the server's storage directory
+                2. File becomes accessible via HTTP URL: `GET /files/{filename}`
+                3. XMPP message is sent with XEP-0066 OOB extension containing the HTTP URL
+                4. Recipient's XMPP client can download the file from the provided URL
 
-        **File Size Limit**: Configured via `file_transfer.max_size` (default: 10 MB)
-        **Storage**: Files are saved to `file_transfer.storage_path` with unique names
-        **Public URL**: Constructed using `file_transfer.base_url` (default: `http://localhost:8080/files`)
-        **Retention**: Files are kept for `file_transfer.retain_days` (default: 7 days)
+                **File Size Limit**: Configured via `file_transfer.max_size` (default: 10 MB)
+                **Storage**: Files are saved to `file_transfer.storage_path` with unique names
+                **Public URL**: Constructed using `file_transfer.base_url` (default: `http://localhost:8080/files`)
+                **Retention**: Files are kept for `file_transfer.retain_days` (default: 7 days)
 
-        **Supported Formats**: Any file type. MIME type is auto-detected from file extension.
+                **Supported Formats**: Any file type. MIME type is auto-detected from file extension.
 
-        **Authentication**: Requires API key via `API-Key` header or `Authorization: Bearer <key>`
+                **Authentication**: Requires API key via `API-Key` header or `Authorization: Bearer <key>`
       operationId: sendFile
       security:
         - ApiKeyAuth: []
@@ -240,7 +242,7 @@ paths:
               properties:
                 to:
                   type: string
-                  description: Recipient JID (e.g., user@example.com)
+                  description: Recipient JID
                   example: user@example.com
                 description:
                   type: string
@@ -270,8 +272,7 @@ paths:
                     name: document.pdf
                     size: 1048576
                     type: application/pdf
-                    path: ./uploads/document_1700000000000.pdf
-                    url: http://localhost:8080/files/document_1700000000000.pdf
+                    url: 'http://localhost:8080/files/document_1700000000000.pdf'
                     uploaded_at: '2023-12-01T12:00:00Z'
                   sent_at: '2023-12-01T12:00:00Z'
                   request_id: abc123
@@ -283,44 +284,6 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
-  /files/{filename}:
-    get:
-      tags:
-        - Files
-      summary: Download uploaded file
-      description: |-
-        Serves files that were uploaded via the send-file endpoint. This endpoint is publicly accessible without authentication to allow XMPP recipients to download files.
-
-        Files are served with appropriate Content-Type headers based on file extension.
-        The endpoint includes security checks to prevent directory traversal attacks.
-
-        **Note**: Files are stored temporarily and may be cleaned up based on `file_transfer.retain_days` configuration.
-      operationId: serveFile
-      security: []
-      parameters:
-        - name: filename
-          in: path
-          required: true
-          description: Name of the file to download (as returned in the upload response)
-          schema:
-            type: string
-            example: document_1700000000000.pdf
-      responses:
-        '200':
-          description: File served successfully
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
   /api/v1/status:
     get:
       tags:
@@ -399,6 +362,45 @@ paths:
                 last_error: Connection timeout
         '401':
           $ref: '#/components/responses/Unauthorized'
+  '/files/{filename}':
+    get:
+      tags:
+        - Files
+      summary: Download uploaded file
+      description: |-
+        |-
+                Serves files that were uploaded via the send-file endpoint. This endpoint is publicly accessible without authentication to allow XMPP recipients to download files.
+
+                Files are served with appropriate Content-Type headers based on file extension.
+                The endpoint includes security checks to prevent directory traversal attacks.
+
+                **Note**: Files are stored temporarily and may be cleaned up based on `file_transfer.retain_days` configuration.
+      operationId: serveFile
+      security: []
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          description: Name of the file to download (as returned in the upload response)
+          schema:
+            type: string
+            example: document_1700000000000.pdf
+      responses:
+        '200':
+          description: File served successfully
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 components:
   schemas:
     RootResponse:
@@ -540,7 +542,7 @@ components:
         url:
           type: string
           description: Public URL to access the file (if base_url configured)
-          example: http://localhost:8080/files/document_1700000000000.pdf
+          example: 'http://localhost:8080/files/document_1700000000000.pdf'
         uploaded_at:
           type: string
           format: date-time
@@ -781,7 +783,7 @@ components:
             error: Invalid JID format
             code: 400
     Unauthorized:
-      description: Unauthorized - valid or missing API key
+      description: Unauthorized - invalid or missing API key
       content:
         application/json:
           schema:
@@ -810,6 +812,26 @@ components:
             success: false
             error: XMPP connection not available
             code: 503
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: Access denied
+            code: 403
+    NotFound:
+      description: Not found - resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: File not found
+            code: 404
   securitySchemes:
     ApiKeyAuth:
       type: apiKey
@@ -829,6 +851,8 @@ tags:
     description: Webhook management and status endpoints
   - name: Documentation
     description: Webhook management and status endpoints
+  - name: Files
+    description: File upload and download endpoints
 externalDocs:
   description: GitHub Repository
   url: 'https://github.com/your-org/jabber-bot'
