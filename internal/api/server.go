@@ -83,13 +83,12 @@ func (s *Server) setupMiddleware() {
 		return c.Next()
 	})
 
-	// Swagger documentation. Register only if file exists
+	// Swagger documentation. Register only if file exists (public - no auth required)
 	openAPIPath := "docs/openapi.json"
 	if _, err := os.Stat(openAPIPath); err == nil {
-		s.app.Use(swagger.New(swagger.Config{
+		s.app.Get("/swagger", swagger.New(swagger.Config{
 			Title:    "Jabber Bot API",
 			BasePath: "/",
-			Path:     "swagger",
 			FilePath: openAPIPath,
 		}))
 	}
