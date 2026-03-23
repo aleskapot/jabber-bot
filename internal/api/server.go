@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/contrib/fiberzap/v2"
 	"github.com/gofiber/contrib/swagger"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"go.uber.org/zap"
@@ -69,10 +69,9 @@ func (s *Server) setupMiddleware() {
 	// Recovery middleware
 	s.app.Use(recover.New())
 
-	// Request logger
-	s.app.Use(logger.New(logger.Config{
-		Format:     "${time} | ${status} | ${latency} | ${method} | ${path} | ${ip} | ${error}\n",
-		TimeFormat: "2006-01-02 15:04:05",
+	// Request logger with zap
+	s.app.Use(fiberzap.New(fiberzap.Config{
+		Logger: s.logger,
 	}))
 
 	// Custom middleware to inject logger and config
@@ -84,12 +83,13 @@ func (s *Server) setupMiddleware() {
 	})
 
 	// Swagger documentation. Register only if file exists (public - no auth required)
-	openAPIPath := "docs/openapi.json"
+	openAPIPath := "./docs/openapi.json"
 	if _, err := os.Stat(openAPIPath); err == nil {
-		s.app.Get("/swagger", swagger.New(swagger.Config{
-			Title:    "Jabber Bot API",
+		s.app.Use(swagger.New(swagger.Config{
 			BasePath: "/",
 			FilePath: openAPIPath,
+			Path:     "swagger",
+			Title:    "Jabber Bot API Documentation",
 		}))
 	}
 }
