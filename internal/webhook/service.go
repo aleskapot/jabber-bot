@@ -298,6 +298,11 @@ func (s *Service) sendWebhookAttempt(payload models.WebhookPayload) error {
 		req.Header.Set("Webhook-Test-Mode", "true")
 	}
 
+	// Add API key header if configured
+	if s.config.Webhook.APIKey != "" {
+		req.Header.Set("API-Key", s.config.Webhook.APIKey)
+	}
+
 	// Send request
 	resp, err := s.httpClient.Do(req)
 	if err != nil {

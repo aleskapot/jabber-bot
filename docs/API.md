@@ -267,7 +267,6 @@ docker run --rm -v "${PWD}:/local" openapitools/openapi-generator-cli generate \
 - No HTTPS enforcement
 
 ### Recommended Improvements
-- Implement API key authentication (`X-API-Key` header)
 - Add rate limiting middleware
 - Enforce HTTPS in production
 - Add request/response validation

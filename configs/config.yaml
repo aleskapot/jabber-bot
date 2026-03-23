@@ -18,6 +18,7 @@ webhook:
   timeout: 30s
   retry_attempts: 3
   test_mode_suffix: "-test"  # Suffix for webhook URLs when [test] prefix is detected
+  api_key: ""  # Optional API key value (Sends as API-Key header if non-empty)
   
 # Logging Configuration
 logging:

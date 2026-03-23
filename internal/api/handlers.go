@@ -17,6 +17,7 @@ import (
 
 // handleSendMessage handles POST /api/v1/send
 func (s *Server) handleSendMessage(c *fiber.Ctx) error {
+	//goland:noinspection DuplicatedCode
 	logger := c.Locals("logger").(*zap.Logger)
 	manager := c.Locals("manager").(XMPPManagerInterface)
 
@@ -452,7 +453,7 @@ All error responses follow this format:
 
 ## Authentication
 Currently, the API does not require authentication. In production, consider implementing:
-- API keys (X-API-Key header)
+- API keys (API-Key header)
 - OAuth2 tokens
 - Rate limiting
 

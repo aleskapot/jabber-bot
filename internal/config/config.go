@@ -36,6 +36,7 @@ type WebhookConfig struct {
 	Timeout        time.Duration `mapstructure:"timeout"`
 	RetryAttempts  int           `mapstructure:"retry_attempts"`
 	TestModeSuffix string        `mapstructure:"test_mode_suffix"`
+	APIKey         string        `mapstructure:"api_key"`
 }
 
 type LoggingConfig struct {
