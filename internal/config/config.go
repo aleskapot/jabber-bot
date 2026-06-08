@@ -18,10 +18,11 @@ type Config struct {
 }
 
 type XMPPConfig struct {
-	JID      string `mapstructure:"jid"`
-	Password string `mapstructure:"password"`
-	Server   string `mapstructure:"server"`
-	Resource string `mapstructure:"resource"`
+	JID       string `mapstructure:"jid"`
+	Password  string `mapstructure:"password"`
+	Server    string `mapstructure:"server"`
+	Resource  string `mapstructure:"resource"`
+	Reconnect bool   `mapstructure:"reconnect"`
 }
 
 type APIConfig struct {

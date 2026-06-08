@@ -18,6 +18,7 @@ xmpp:
   password: "secret123"
   server: "xmpp.example.com:5222"
   resource: "bot-resource"
+  reconnect: true
 
 api:
   port: 9090
@@ -53,6 +54,7 @@ reconnection:
 	assert.Equal(t, "secret123", cfg.XMPP.Password)
 	assert.Equal(t, "xmpp.example.com:5222", cfg.XMPP.Server)
 	assert.Equal(t, "bot-resource", cfg.XMPP.Resource)
+	assert.True(t, cfg.XMPP.Reconnect)
 
 	// Verify API config
 	assert.Equal(t, 9090, cfg.API.Port)
