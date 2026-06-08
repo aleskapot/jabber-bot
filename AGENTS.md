@@ -61,6 +61,16 @@ jabber-bot/
 ├── .github/            # GitHub workflows
 │   └── workflows/      # CI/CD pipelines
 │       └── tests-codeql.yml  # CodeQL analysis and test workflow
+├── n8n-nodes-jabber-bot/ # Custom n8n node package (TypeScript)
+│   ├── src/
+│   │   ├── credentials/
+│   │   │   └── JabberBotApi.credentials.ts  # n8n credential: Base URL + API Key
+│   │   └── nodes/
+│   │       └── JabberBot/
+│   │           ├── JabberBot.node.ts         # Action node (send message/chat state/file)
+│   │           └── JabberBotTrigger.node.ts  # Webhook trigger node
+│   ├── package.json      # n8n community node package config
+│   └── tsconfig.json
 ├── bin/                # Build output directory
 ├── Makefile            # Build commands
 ├── go.mod              # Go module definition
@@ -421,6 +431,35 @@ docker run -p 5222:5222 -p 5280:5280 \
 - Retry attempts
 - Success/failure handling
 
+## 🔗 n8n Integration (Custom Node Package)
+
+**Location:** `n8n-nodes-jabber-bot/`
+
+Community n8n node package for integrating Jabber Bot into n8n workflows. Communicates with the Jabber Bot REST API.
+
+### Nodes
+
+**JabberBot (Action Node)** — 3 operations:
+- **Send Message** — `POST /send` — Sends XMPP message to a JID (chat/groupchat/headline/normal)
+- **Send Chat State** — `POST /chat-state` — Sends XEP-0085 typing notifications (active/composing/paused/inactive/gone)
+- **Send File** — `POST /send-file` — Uploads and sends a file via multipart form-data
+
+**JabberBotTrigger (Trigger Node)** — Webhook receiver:
+- Listens for `POST /webhook` from Jabber Bot
+- Parses incoming message payload (id, from, to, body, type, subject, thread, stamp, timestamp, source)
+- Triggers n8n workflows on incoming XMPP messages
+
+### Credentials
+
+**JabberBotApi** — Stores `baseUrl` (default: `http://localhost:8080/api/v1`) and `apiKey` (sent as `API-Key` header).
+
+### Tech Stack & Build
+
+- TypeScript, compiled with `tsc`
+- Depends on `n8n-workflow` (^2.0.0) and `form-data` (^4.0.0)
+- Build: `npm run build` — compiles TS, copies icons to `dist/`
+- Install into n8n: copy `dist/*` to `~/.n8n/nodes/` and restart n8n
+
 ## 🐳 Docker Development
 
 ### Docker Compose Services
@@ -725,6 +764,7 @@ scp bin/jabber-bot user@server:/opt/jabber-bot/
 - `docs/README.md` - Documentation index
 - `docs/openapi.yaml` - OpenAPI specification (YAML)
 - `docs/openapi.json` - OpenAPI specification (JSON)
+- `n8n-nodes-jabber-bot/README.md` - n8n community node documentation
 
 ### External Documentation
 
