@@ -16,6 +16,7 @@ import (
 	"github.com/gofiber/contrib/fiberzap/v2"
 	"github.com/gofiber/contrib/swagger"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/healthcheck"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"go.uber.org/zap"
@@ -98,8 +99,24 @@ func (s *Server) setupMiddleware() {
 func (s *Server) setupRoutes() {
 	api := s.app.Group("/api/v1")
 
-	// Health endpoint (public - no auth required)
-	api.Get("/health", s.handleHealth)
+	// Health check endpoints (public - no auth required)
+	// Liveness - confirms the API process is running
+	// Readiness - confirms XMPP connection is available
+	api.Use(healthcheck.New(healthcheck.Config{
+		LivenessProbe: func(c *fiber.Ctx) bool {
+			// Rely on the internal reconnection mechanism and always response with true
+			if s.config.Reconnection.Enabled {
+				return true
+			}
+			// If reconnection is disabled, check the connection status
+			return s.manager.IsConnected()
+		},
+		LivenessEndpoint: "/health",
+		ReadinessProbe: func(c *fiber.Ctx) bool {
+			return s.manager.IsConnected()
+		},
+		ReadinessEndpoint: "/ready",
+	}))
 
 	// Apply authentication middleware to protected endpoints
 	if s.config.API.Enabled {

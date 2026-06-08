@@ -4,6 +4,13 @@ xmpp:
   password: "7eAuZXdLQq"
   server: "jabber.skbis.ru:5222"
   resource: "bot"
+
+# Reconnection Configuration
+# Set to true to enable inner reconnection handler or rely on liveness probe with external tools
+reconnection:
+  enabled: false
+  max_attempts: 6
+  backoff: "10s"
   
 # REST API Configuration
 api:
@@ -25,12 +32,6 @@ logging:
   level: "debug"  # debug, info, warn, error
   output: "stdout"  # stdout, stderr, file
   file_path: ""  # for output=file
-  
-# Reconnection Configuration
-reconnection:
-  enabled: true
-  max_attempts: 5
-  backoff: "5s"
 
 # File Transfer Configuration
 file_transfer:

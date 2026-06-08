@@ -39,6 +39,10 @@ type Client struct {
 	mu           sync.RWMutex
 	cancelFunc   context.CancelFunc
 	streamLogger *os.File
+
+	// Track the actual connection state reported by the XMPP library
+	// This is updated by the EventHandler when the library reports state changes
+	libraryConnected int32
 }
 
 // NewClient creates new XMPP client
@@ -90,12 +94,16 @@ func (c *Client) Connect(ctx context.Context) error {
 	}
 	c.client = client
 
+	// Set up event handler to track actual connection state from the XMPP library
+	c.client.SetHandler(c.handleConnectionEvent)
+
 	// Connect to XMPP server
 	if err := c.client.Connect(); err != nil {
 		return fmt.Errorf("failed to connect to XMPP server: %w", err)
 	}
 
 	c.setConnected(true)
+	atomic.StoreInt32(&c.libraryConnected, 1)
 	c.logger.Info("Successfully connected to XMPP server",
 		zap.String("jid", c.config.XMPP.JID),
 		zap.String("server", c.config.XMPP.Server),
@@ -117,6 +125,7 @@ func (c *Client) Disconnect() error {
 	}
 
 	c.setConnected(false)
+	atomic.StoreInt32(&c.libraryConnected, 0)
 
 	if c.client != nil {
 		if err := c.client.Disconnect(); err != nil {
@@ -657,6 +666,11 @@ func (c *Client) IsConnected() bool {
 	return c.isConnected()
 }
 
+// IsLibraryConnected returns the connection state as reported by the XMPP library
+func (c *Client) IsLibraryConnected() bool {
+	return atomic.LoadInt32(&c.libraryConnected) == 1
+}
+
 // GetMessageChannel returns channel for incoming messages
 func (c *Client) GetMessageChannel() <-chan models.Message {
 	return c.messageChan
@@ -802,6 +816,7 @@ func (c *Client) reconnect() error {
 		}
 
 		c.setConnected(true)
+		atomic.StoreInt32(&c.libraryConnected, 1)
 		c.logger.Info("Reconnection successful",
 			zap.Int("attempt", attempt),
 		)
@@ -811,9 +826,82 @@ func (c *Client) reconnect() error {
 	return fmt.Errorf("failed to reconnect after %d attempts", c.config.Reconnection.MaxAttempts)
 }
 
+// handleConnectionEvent handles XMPP connection state changes from the xmpp library
+func (c *Client) handleConnectionEvent(event xmpp.Event) error {
+	// Track connection state based on events from the library
+	// The EventHandler is called when the connection state changes
+	// We use this to keep our internal flag in sync with the actual connection state
+
+	desc := event.Description
+	streamErr := event.StreamError
+
+	// Log the event for debugging
+	c.logger.Debug("XMPP connection event",
+		zap.String("description", desc),
+		zap.String("stream_error", streamErr),
+	)
+
+	// If there's a stream error, the connection is broken
+	if streamErr != "" {
+		atomic.StoreInt32(&c.libraryConnected, 0)
+		c.setConnected(false)
+		c.logger.Error("XMPP stream error detected",
+			zap.String("error", streamErr),
+			zap.String("description", desc),
+		)
+		return nil
+	}
+
+	// For other events, we mark as potentially connected
+	// The actual verification will happen in the health check
+	atomic.StoreInt32(&c.libraryConnected, 1)
+
+	return nil
+}
+
 // isConnected returns connection status (thread-safe)
 func (c *Client) isConnected() bool {
-	return atomic.LoadInt32(&c.connected) == 1
+	// Check the internal flag first
+	if atomic.LoadInt32(&c.connected) != 1 {
+		return false
+	}
+
+	// If we have a real XMPP client connection, verify it's actually alive
+	// This ensures we detect actual disconnections even if the flag wasn't updated
+	if c.client != nil {
+		return c.checkConnectionHealth()
+	}
+
+	// For tests or when client is not yet created, just return the flag state
+	return true
+}
+
+// checkConnectionHealth performs a lightweight check to verify the connection is alive
+func (c *Client) checkConnectionHealth() bool {
+	// Use a timeout context to avoid blocking
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Send a minimal IQ get to check if the connection is alive
+	// We use service discovery info request as it's lightweight
+	iq := stanza.IQ{
+		Attrs: stanza.Attrs{
+			Type: stanza.IQTypeGet,
+			To:   c.config.XMPP.Server,
+		},
+		Payload: &stanza.DiscoInfo{},
+	}
+
+	// We don't need a response, just check if sending succeeds
+	_, err := c.client.SendIQ(ctx, &iq)
+	if err != nil {
+		// Connection is likely broken
+		c.logger.Debug("Connection health check failed", zap.Error(err))
+		atomic.StoreInt32(&c.connected, 0)
+		return false
+	}
+
+	return true
 }
 
 // setConnected sets connection status (thread-safe)
