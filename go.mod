@@ -8,7 +8,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.11
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
-	go.uber.org/zap v1.27.1
+	go.uber.org/zap v1.28.0
 	gosrc.io/xmpp v0.5.1
 )
 
