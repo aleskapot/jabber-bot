@@ -180,7 +180,7 @@ Simple health check endpoint.
 
 #### Example
 ```bash
-curl -X GET http://localhost:8080/api/v1/health
+curl -X GET http://localhost:8080/health
 ```
 
 ### 5. Webhook Status
@@ -327,7 +327,7 @@ Monitor API health using a cron job:
 
 ```bash
 #!/bin/bash
-HEALTH_URL="http://localhost:8080/api/v1/health"
+HEALTH_URL="http://localhost:8080/health"
 RESPONSE=$(curl -s "$HEALTH_URL")
 
 if echo "$RESPONSE" | grep -q '"status":"ok"'; then

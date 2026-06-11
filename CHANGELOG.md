@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `POST /api/v1/send` - Send XMPP message
 - `POST /api/v1/send-muc` - Send MUC message
 - `GET /api/v1/status` - Get bot status
-- `GET /api/v1/health` - Health check
+- `GET /health` - Health check
 - `GET /api/v1/webhook/status` - Webhook service status
 
 ### Configuration

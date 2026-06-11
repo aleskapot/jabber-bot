@@ -210,7 +210,7 @@ func (suite *IntegrationTestSuite) TestAPIEndpoints() {
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", suite.apiServer.GetPort())
 
 	// Test health endpoint (should be 503 since XMPP is not connected in integration tests)
-	resp, err := http.Get(baseURL + "/api/v1/health")
+	resp, err := http.Get(baseURL + "/health")
 	require.NoError(suite.T(), err)
 	assert.Equal(suite.T(), http.StatusServiceUnavailable, resp.StatusCode)
 	resp.Body.Close()
@@ -299,7 +299,7 @@ func (suite *IntegrationTestSuite) TestAPITransactions() {
 	for i := 0; i < 5; i++ {
 		go func(id int) {
 			// Health check
-			resp, err := http.Get(baseURL + "/api/v1/health")
+			resp, err := http.Get(baseURL + "/health")
 			assert.NoError(suite.T(), err)
 			if resp != nil {
 				resp.Body.Close()

@@ -36,7 +36,7 @@ paths:
                   send: /api/v1/send - Send XMPP message
                   send_muc: /api/v1/send-muc - Send MUC message
                   status: /api/v1/status - Get bot status
-                  health: /api/v1/health - Health check
+                  health: /health - Health check
                   docs: /docs - API documentation
   /docs:
     get:
@@ -307,7 +307,7 @@ paths:
                 version: 1.0.0
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /api/v1/health:
+  /health:
     get:
       tags:
         - Status
@@ -423,7 +423,7 @@ components:
             send: /api/v1/send - Send XMPP message
             send_muc: /api/v1/send-muc - Send MUC message
             status: /api/v1/status - Get bot status
-            health: /api/v1/health - Health check
+            health: /health - Health check
             docs: /docs - API documentation
     SendMessageRequest:
       type: object

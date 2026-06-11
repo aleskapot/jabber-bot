@@ -158,7 +158,7 @@ services:
       - ./logs:/app/logs
       - ./configs/docker-config.yaml:/app/configs/config.yaml:ro
     healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:8080/api/v1/health"]
+      test: ["CMD", "wget", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -270,13 +270,13 @@ spec:
             cpu: "500m"
         livenessProbe:
           httpGet:
-            path: /api/v1/health
+            path: /health
             port: 8080
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /api/v1/health
+            path: /health
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
@@ -434,7 +434,7 @@ sudo systemctl status jabber-bot
 
 ```bash
 # Basic health check
-curl http://localhost:8080/api/v1/health
+curl http://localhost:8080/health
 
 # Detailed status
 curl http://localhost:8080/api/v1/status
@@ -547,7 +547,7 @@ ps aux | grep jabber-bot
 netstat -tlnp | grep 8080
 
 # Test API endpoint
-curl -v http://localhost:8080/api/v1/health
+curl -v http://localhost:8080/health
 ```
 
 ### Debug Mode

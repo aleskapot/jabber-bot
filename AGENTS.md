@@ -483,7 +483,7 @@ The Docker Compose file includes:
 All configuration can be passed via environment variables (see `.env.example`).
 
 **Health Check:**
-- Endpoint: `http://localhost:8080/api/v1/health`
+- Endpoint: `http://localhost:8080/health`
 - Interval: 30s
 - Timeout: 10s
 - Retries: 3
@@ -573,7 +573,7 @@ go list -json -m all | nancy sleuth
 
 ### Monitoring Endpoints
 
-**Health Check:** `GET /api/v1/health`
+**Health Check:** `GET /health`
 **Status:** `GET /api/v1/status`
 **Webhook Status:** `GET /api/v1/webhook/status`
 
@@ -744,7 +744,7 @@ scp bin/jabber-bot user@server:/opt/jabber-bot/
 
 **Health Checks:**
 - Docker health check configured in docker-compose.yml
-- Health endpoint: `GET /api/v1/health`
+- Health endpoint: `GET /health`
 - Use in orchestration platforms (Kubernetes, ECS, etc.)
 
 **Monitoring:**

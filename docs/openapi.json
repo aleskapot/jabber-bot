@@ -47,7 +47,7 @@
                     "send": "/api/v1/send - Send XMPP message",
                     "send_muc": "/api/v1/send-muc - Send MUC message",
                     "status": "/api/v1/status - Get bot status",
-                    "health": "/api/v1/health - Health check",
+                    "health": "/health - Health check",
                     "docs": "/docs - API documentation"
                   }
                 }
@@ -395,7 +395,7 @@
         }
       }
     },
-    "/api/v1/health": {
+    "/health": {
       "get": {
         "tags": [
           "Status"
@@ -552,7 +552,7 @@
               "send": "/api/v1/send - Send XMPP message",
               "send_muc": "/api/v1/send-muc - Send MUC message",
               "status": "/api/v1/status - Get bot status",
-              "health": "/api/v1/health - Health check",
+              "health": "/health - Health check",
               "docs": "/docs - API documentation"
             }
           }

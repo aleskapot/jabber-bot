@@ -26,8 +26,8 @@ curl -s http://localhost:8080/api/v1/status | jq '.'
 echo
 
 # Test health endpoint
-echo "5. Testing health endpoint (/api/v1/health):"
-curl -s http://localhost:8080/api/v1/health | jq '.'
+echo "5. Testing health endpoint (/health):"
+curl -s http://localhost:8080/health | jq '.'
 echo
 
 echo "=== API Test Complete ==="

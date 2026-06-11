@@ -354,7 +354,7 @@ func TestHandleHealth(t *testing.T) {
 	app := fiber.New()
 	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
 
-	req := httptest.NewRequest("GET", "/api/v1/health", nil)
+	req := httptest.NewRequest("GET", "/health", nil)
 
 	app.Use(func(c *fiber.Ctx) error {
 		c.Locals("logger", logger)
@@ -363,7 +363,7 @@ func TestHandleHealth(t *testing.T) {
 		return c.Next()
 	})
 
-	app.Get("/api/v1/health", server.handleHealth)
+	app.Get("/health", server.handleHealth)
 
 	// Perform request
 	resp, err := app.Test(req)
@@ -391,7 +391,7 @@ func TestHandleHealth_Unhealthy(t *testing.T) {
 	app := fiber.New()
 	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
 
-	req := httptest.NewRequest("GET", "/api/v1/health", nil)
+	req := httptest.NewRequest("GET", "/health", nil)
 
 	app.Use(func(c *fiber.Ctx) error {
 		c.Locals("logger", logger)
@@ -400,7 +400,7 @@ func TestHandleHealth_Unhealthy(t *testing.T) {
 		return c.Next()
 	})
 
-	app.Get("/api/v1/health", server.handleHealth)
+	app.Get("/health", server.handleHealth)
 
 	// Perform request
 	resp, err := app.Test(req)

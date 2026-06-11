@@ -97,12 +97,10 @@ func (s *Server) setupMiddleware() {
 
 // setupRoutes configures API routes
 func (s *Server) setupRoutes() {
-	api := s.app.Group("/api/v1")
-
 	// Health check endpoints (public - no auth required)
 	// Liveness - confirms the API process is running
 	// Readiness - confirms XMPP connection is available
-	api.Use(healthcheck.New(healthcheck.Config{
+	s.app.Use(healthcheck.New(healthcheck.Config{
 		LivenessProbe: func(c *fiber.Ctx) bool {
 			// Rely on the internal reconnection mechanism and always response with true
 			if s.config.Reconnection.Enabled {
@@ -117,6 +115,8 @@ func (s *Server) setupRoutes() {
 		},
 		ReadinessEndpoint: "/ready",
 	}))
+
+	api := s.app.Group("/api/v1")
 
 	// Apply authentication middleware to protected endpoints
 	if s.config.API.Enabled {

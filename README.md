@@ -85,15 +85,15 @@ make run
 
 ## 🔌 API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/v1/send` | Send message to XMPP user |
-| `POST` | `/api/v1/send-muc` | Send message to group chat |
-| `POST` | `/api/v1/send-file` | Upload and send file via XMPP (XEP-0363) |
-| `GET` | `/files/:filename` | Download uploaded file (public) |
-| `GET` | `/api/v1/status` | Get bot status and statistics |
-| `GET` | `/api/v1/health` | Simple health check |
-| `GET` | `/api/v1/webhook/status` | Webhook service status |
+| Method | Endpoint                 | Description                              |
+|--------|--------------------------|------------------------------------------|
+| `POST` | `/api/v1/send`           | Send message to XMPP user                |
+| `POST` | `/api/v1/send-muc`       | Send message to group chat               |
+| `POST` | `/api/v1/send-file`      | Upload and send file via XMPP (XEP-0363) |
+| `GET`  | `/files/:filename`       | Download uploaded file (public)          |
+| `GET`  | `/api/v1/status`         | Get bot status and statistics            |
+| `GET`  | `/health`                | Simple health check                      |
+| `GET`  | `/api/v1/webhook/status` | Webhook service status                   |
 
 ### Quick API Example
 
@@ -253,7 +253,7 @@ When using the Docker monitoring stack:
 
 - **Grafana Dashboard**: http://localhost:3000 (admin/admin)
 - **Prometheus Metrics**: http://localhost:9090
-- **Health Checks**: http://localhost:8080/api/v1/health
+- **Health Checks**: http://localhost:8080/health
 
 ### Health Check Response
 
@@ -530,7 +530,7 @@ return [{
 
 ```javascript
 // Check Jabber Bot health
-const healthCheck = await axios.get('http://jabber-bot:8080/api/v1/health');
+const healthCheck = await axios.get('http://jabber-bot:8080/health');
 
 if (healthCheck.data.status !== 'ok') {
   // Send alert

@@ -58,7 +58,7 @@ JABBER_BOT_API_PORT=8080
 curl http://localhost:8080/api/v1/status
 
 # Health check
-curl http://localhost:8080/api/v1/health
+curl http://localhost:8080/health
 ```
 
 ## Option 2: Manual Installation
@@ -292,22 +292,22 @@ curl -X POST https://your-webhook-endpoint.com/test \
   -d '{"test": true}'
 
 # Check firewall rules
-curl -v http://localhost:8080/api/v1/health
+curl -v http://localhost:8080/health
 ```
 
 ## Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| **Authentication failed** | Verify XMPP JID and password |
-| **Connection timeout** | Check XMPP server accessibility |
-| **Webhook fails** | Verify webhook URL is reachable |
-| **High memory usage** | Check message queue size |
-| **API returns 500** | Check XMPP connection status |
+| Issue                     | Solution                        |
+|---------------------------|---------------------------------|
+| **Authentication failed** | Verify XMPP JID and password    |
+| **Connection timeout**    | Check XMPP server accessibility |
+| **Webhook fails**         | Verify webhook URL is reachable |
+| **High memory usage**     | Check message queue size        |
+| **API returns 500**       | Check XMPP connection status    |
 
 ## Need Help?
 
-- 📖 [Documentation](docs/README.md)
+- 📖 [Documentation](README.md)
 - 🐛 [Issues](https://github.com/your-org/jabber-bot/issues)
 - 💬 [Discussions](https://github.com/your-org/jabber-bot/discussions)
 - 📧 [Support](mailto:support@your-org.com)
@@ -335,7 +335,7 @@ JABBER_BOT_RECONNECTION_ENABLED=true
 POST /api/v1/send          # Send message
 POST /api/v1/send-muc      # Send to group chat
 GET  /api/v1/status        # Bot status
-GET  /api/v1/health        # Health check
+GET  /health        # Health check
 GET  /api/v1/webhook/status # Webhook status
 ```
 

@@ -35,7 +35,7 @@ You can use the specification files with various OpenAPI tools:
 
 #### Status & Health
 - `GET /api/v1/status` - Get comprehensive bot status
-- `GET /api/v1/health` - Simple health check
+- `GET /health` - Simple health check
 - `GET /api/v1/webhook/status` - Webhook service status
 
 #### Documentation
@@ -90,7 +90,7 @@ curl -X POST http://localhost:8080/api/v1/send-file \
 {
   "success": true,
   "message": "Operation completed successfully",
-  "data": { ... }
+  "data": {  }
 }
 ```
 
@@ -275,7 +275,7 @@ docker run --rm -v "${PWD}:/local" openapitools/openapi-generator-cli generate \
 ## Monitoring
 
 ### Health Checks
-- `/api/v1/health`: Basic health check
+- `/health`: Basic health check
 - Returns HTTP 200 when healthy, 503 when XMPP connection lost
 
 ### Logging

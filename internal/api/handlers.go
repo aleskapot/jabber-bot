@@ -252,7 +252,7 @@ func (s *Server) handleWebhookStatus(c *fiber.Ctx) error {
 	return c.JSON(webhookStatus)
 }
 
-// handleHealth handles GET /api/v1/health
+// handleHealth handles GET /health
 func (s *Server) handleHealth(c *fiber.Ctx) error {
 	manager := c.Locals("manager").(XMPPManagerInterface)
 
@@ -289,7 +289,7 @@ func (s *Server) handleRoot(c *fiber.Ctx) error {
 			"send_muc":     "/api/v1/send-muc - Send MUC message",
 			"send_file":    "/api/v1/send-file - Send file via XMPP",
 			"status":       "/api/v1/status - Get bot status",
-			"health":       "/api/v1/health - Health check",
+			"health":       "/health - Health check",
 			"webhook":      "/api/v1/webhook/status - Get webhook status",
 			"docs":         "/docs - API documentation",
 			"openapi":      "/openapi.yaml - OpenAPI specification (YAML)",
@@ -430,7 +430,7 @@ Get webhook service status and statistics.
 }
 
 ### Health Check
-**GET /api/v1/health**
+**GET /health**
 Simple health check endpoint.
 
 **Response:**
