@@ -21,9 +21,10 @@ func FiberMiddleware() fiber.Handler {
 		// Get status code
 		statusCode := strconv.Itoa(c.Response().StatusCode())
 
-		// Get method and path
-		method := c.Method()
-		path := c.Path()
+		// Force-copy strings from fast-http buffer to avoid label corruption
+		// when request context is recycled by the pool
+		method := string(c.Method())
+		path := string(c.Path())
 
 		// Record metrics
 		RecordAPIDuration(method, path, statusCode, duration)
