@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"jabber-bot/internal/config"
+	"jabber-bot/internal/metrics"
 	"jabber-bot/internal/models"
 	"jabber-bot/internal/xmpp"
 	"net"
@@ -16,6 +17,7 @@ import (
 	"github.com/gofiber/contrib/fiberzap/v2"
 	"github.com/gofiber/contrib/swagger"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/gofiber/fiber/v2/middleware/healthcheck"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
@@ -116,7 +118,13 @@ func (s *Server) setupRoutes() {
 		ReadinessEndpoint: "/ready",
 	}))
 
+	// Prometheus metrics endpoint (public)
+	s.app.Get("/metrics", adaptor.HTTPHandler(metrics.Handler()))
+
 	api := s.app.Group("/api/v1")
+
+	// Apply Prometheus metrics middleware to API group
+	api.Use(metrics.FiberMiddleware())
 
 	// Apply authentication middleware to protected endpoints
 	if s.config.API.Enabled {

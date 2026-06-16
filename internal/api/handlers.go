@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"jabber-bot/internal/metrics"
 	"jabber-bot/internal/models"
 	"jabber-bot/internal/xmpp"
 
@@ -65,6 +66,9 @@ func (s *Server) handleSendMessage(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(response)
 	}
 
+	// Record metrics
+	metrics.RecordMessageSent(req.To, req.Type)
+
 	// Success response
 	response := models.APIResponse{
 		Success: true,
@@ -83,6 +87,7 @@ func (s *Server) handleSendMessage(c *fiber.Ctx) error {
 
 // handleSendMUCMessage handles POST /api/v1/send-muc
 func (s *Server) handleSendMUCMessage(c *fiber.Ctx) error {
+	//goland:noinspection DuplicatedCode
 	logger := c.Locals("logger").(*zap.Logger)
 	manager := c.Locals("manager").(XMPPManagerInterface)
 
@@ -129,6 +134,9 @@ func (s *Server) handleSendMUCMessage(c *fiber.Ctx) error {
 
 		return c.Status(fiber.StatusInternalServerError).JSON(response)
 	}
+
+	// Record metrics
+	metrics.RecordMessageSent(req.Room, "groupchat")
 
 	// Success response
 	response := models.APIResponse{
@@ -192,6 +200,9 @@ func (s *Server) handleSendChatState(c *fiber.Ctx) error {
 
 		return c.Status(fiber.StatusInternalServerError).JSON(response)
 	}
+
+	// Record metrics
+	metrics.RecordMessageSent(req.To, "chat_state")
 
 	response := models.APIResponse{
 		Success: true,
@@ -745,6 +756,9 @@ func (s *Server) handleSendFile(c *fiber.Ctx) error {
 		URL:        fileURL,
 		UploadedAt: time.Now().UTC().Format(time.RFC3339),
 	}
+
+	// Record file upload size metrics
+	metrics.RecordFileUploadSize(float64(file.Size))
 
 	response := models.APIResponse{
 		Success: true,

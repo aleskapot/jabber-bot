@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"jabber-bot/internal/config"
+	"jabber-bot/internal/metrics"
 	"jabber-bot/internal/models"
 
 	"go.uber.org/zap"
@@ -171,6 +172,10 @@ func (s *Service) processWebhooks(ctx context.Context) {
 			if !ok {
 				return
 			}
+
+			// Update queue length metric before processing
+			metrics.SetWebhookQueueLength(len(s.messageQueue))
+
 			s.sendWebhook(msg)
 		}
 	}
@@ -178,6 +183,11 @@ func (s *Service) processWebhooks(ctx context.Context) {
 
 // sendWebhook sends webhook notification with retry logic
 func (s *Service) sendWebhook(msg models.Message) {
+	start := time.Now()
+
+	// Update queue length metric
+	metrics.SetWebhookQueueLength(len(s.messageQueue))
+
 	// Create webhook payload
 	payload := models.WebhookPayload{
 		Message:   msg,
@@ -198,6 +208,12 @@ func (s *Service) sendWebhook(msg models.Message) {
 		if err == nil {
 			// Success
 			s.updateStats(true, "")
+
+			// Record webhook metrics
+			duration := time.Since(start).Seconds()
+			metrics.RecordWebhookDelivery("success")
+			metrics.RecordWebhookDuration("success", duration)
+
 			s.logger.Info("Webhook sent successfully",
 				zap.Int("attempt", attempt),
 				zap.String("from", msg.From),
@@ -217,6 +233,10 @@ func (s *Service) sendWebhook(msg models.Message) {
 		}
 
 		lastErr = err
+
+		// Record retry metrics
+		metrics.RecordWebhookRetry("error")
+
 		s.logger.Warn("Webhook attempt failed",
 			zap.Int("attempt", attempt),
 			zap.Int("max_attempts", s.config.Webhook.RetryAttempts),
@@ -245,6 +265,11 @@ func (s *Service) sendWebhook(msg models.Message) {
 	if _, testURL, isTestMode := s.testMode.ProcessTestMessage(payload.Message.Body, s.config.Webhook.URL); isTestMode {
 		webhookURL = testURL
 	}
+
+	// Record failure metrics
+	duration := time.Since(start).Seconds()
+	metrics.RecordWebhookDelivery("failed")
+	metrics.RecordWebhookDuration("failed", duration)
 
 	s.updateStats(false, errorMsg)
 	s.logger.Error("Webhook failed after all attempts",
