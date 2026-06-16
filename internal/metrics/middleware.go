@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -23,8 +24,8 @@ func FiberMiddleware() fiber.Handler {
 
 		// Force-copy strings from fast-http buffer to avoid label corruption
 		// when request context is recycled by the pool
-		method := string(c.Method())
-		path := string(c.Path())
+		method := strings.Clone(c.Method())
+		path := strings.Clone(c.Path())
 
 		// Record metrics
 		RecordAPIDuration(method, path, statusCode, duration)
