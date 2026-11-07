@@ -8,7 +8,7 @@ xmpp:
 # Reconnection Configuration
 # Set to true to enable inner reconnection handler or rely on liveness probe with external tools
 reconnection:
-  enabled: false
+  enabled: true
   max_attempts: 6
   backoff: "10s"
   
