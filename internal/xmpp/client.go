@@ -33,7 +33,6 @@ type Client struct {
 	config       *config.Config
 	logger       *zap.Logger
 	client       *xmpp.Client
-	router       *xmpp.Router
 	connected    int32
 	messageChan  chan models.Message
 	mu           sync.RWMutex
@@ -43,6 +42,10 @@ type Client struct {
 	// Track the actual connection state reported by the XMPP library
 	// This is updated by the EventHandler when the library reports state changes
 	libraryConnected int32
+
+	// Stream Management state for session resumption (XEP-0198)
+	smState   *xmpp.SMState
+	smStateMu sync.RWMutex
 }
 
 // NewClient creates new XMPP client
@@ -71,31 +74,12 @@ func (c *Client) Connect(ctx context.Context) error {
 	}
 	c.streamLogger = tempFile
 
-	// Create XMPP client configuration
-	clientConfig := xmpp.Config{
-		TransportConfiguration: xmpp.TransportConfiguration{
-			Address: c.config.XMPP.Server,
-		},
-		Jid:          c.config.XMPP.JID,
-		Credential:   xmpp.Password(c.config.XMPP.Password),
-		StreamLogger: tempFile,
-	}
-
-	// Create router
-	c.router = xmpp.NewRouter()
-	c.setupHandlers()
-
 	// Create XMPP client
-	client, err := xmpp.NewClient(&clientConfig, c.router, func(err error) {
-		c.logger.Error("XMPP error", zap.Error(err))
-	})
+	client, err := c.createXMPPClient(ctx, tempFile)
 	if err != nil {
-		return fmt.Errorf("failed to create XMPP client: %w", err)
+		return err
 	}
 	c.client = client
-
-	// Set up event handler to track actual connection state from the XMPP library
-	c.client.SetHandler(c.handleConnectionEvent)
 
 	// Connect to XMPP server
 	if err := c.client.Connect(); err != nil {
@@ -113,6 +97,41 @@ func (c *Client) Connect(ctx context.Context) error {
 	go c.handleReconnection(ctx)
 
 	return nil
+}
+
+// createXMPPClient creates a new XMPP client instance with stream management enabled
+func (c *Client) createXMPPClient(ctx context.Context, tempFile *os.File) (*xmpp.Client, error) {
+	// Create XMPP client configuration
+	clientConfig := xmpp.Config{
+		TransportConfiguration: xmpp.TransportConfiguration{
+			Address: c.config.XMPP.Server,
+		},
+		Jid:          c.config.XMPP.JID,
+		Credential:   xmpp.Password(c.config.XMPP.Password),
+		StreamLogger: tempFile,
+
+		// Enable Stream Management (XEP-0198) for session resumption after disconnect
+		StreamManagementEnable: true,
+	}
+
+	// Create router
+	router := xmpp.NewRouter()
+	c.setupHandlers(router)
+
+	// Create XMPP client
+	client, err := xmpp.NewClient(&clientConfig, router, func(err error) {
+		c.logger.Error("XMPP error", zap.Error(err))
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create XMPP client: %w", err)
+	}
+
+	// Set up event handler to track actual connection state from the XMPP library
+	client.SetHandler(func(event xmpp.Event) error {
+		return c.handleConnectionEvent(&event)
+	})
+
+	return client, nil
 }
 
 // Disconnect closes XMPP connection
@@ -676,10 +695,10 @@ func (c *Client) GetMessageChannel() <-chan models.Message {
 	return c.messageChan
 }
 
-// setupHandlers sets up XMPP message handlers
-func (c *Client) setupHandlers() {
+// setupHandlers sets up XMPP message handlers on the given router
+func (c *Client) setupHandlers(router *xmpp.Router) {
 	// Message received handler
-	c.router.HandleFunc("message", func(s xmpp.Sender, p stanza.Packet) {
+	router.HandleFunc("message", func(s xmpp.Sender, p stanza.Packet) {
 		msg, ok := p.(stanza.Message)
 		if !ok {
 			return
@@ -733,7 +752,7 @@ func (c *Client) setupHandlers() {
 	})
 
 	// Information query received handler
-	c.router.HandleFunc("iq", func(s xmpp.Sender, p stanza.Packet) {
+	router.HandleFunc("iq", func(s xmpp.Sender, p stanza.Packet) {
 		iq, ok := p.(*stanza.IQ)
 		if !ok {
 			return
@@ -789,7 +808,7 @@ func (c *Client) handleReconnection(ctx context.Context) {
 		case <-time.After(10 * time.Second):
 			if !c.isConnected() && c.client != nil {
 				c.logger.Warn("XMPP connection lost, attempting to reconnect")
-				if err := c.reconnect(); err != nil {
+				if err := c.reconnect(ctx); err != nil {
 					c.logger.Error("Reconnection failed", zap.Error(err))
 				}
 			}
@@ -798,25 +817,81 @@ func (c *Client) handleReconnection(ctx context.Context) {
 }
 
 // reconnect attempts to reconnect to XMPP server
-func (c *Client) reconnect() error {
+func (c *Client) reconnect(ctx context.Context) error {
+	// Try Stream Management resume first if we have saved state
+	c.smStateMu.RLock()
+	smState := c.smState
+	c.smStateMu.RUnlock()
+
+	if smState != nil {
+		c.logger.Info("Attempting Stream Management resume")
+		if err := c.client.Resume(); err == nil {
+			c.setConnected(true)
+			atomic.StoreInt32(&c.libraryConnected, 1)
+			c.logger.Info("Stream Management resume successful")
+			return nil
+		}
+		c.logger.Warn("Stream Management resume failed, falling back to full reconnect")
+	}
+
 	for attempt := 1; attempt <= c.config.Reconnection.MaxAttempts; attempt++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		c.logger.Info("Reconnection attempt",
 			zap.Int("attempt", attempt),
 			zap.Int("max_attempts", c.config.Reconnection.MaxAttempts),
 		)
 
-		time.Sleep(c.config.Reconnection.Backoff)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(c.config.Reconnection.Backoff):
+		}
 
-		if err := c.client.Connect(); err != nil {
+		// Disconnect old client before replacing
+		if c.client != nil {
+			if err := c.client.Disconnect(); err != nil {
+				c.logger.Warn("Error disconnecting old client during reconnect", zap.Error(err))
+			}
+		}
+
+		// Create a new XMPP client
+		tempFile, err := os.CreateTemp("", "xmpp-stream-*.log")
+		if err != nil {
+			c.logger.Warn("Failed to create temp file for XMPP stream logging", zap.Error(err))
+			tempFile = nil
+		}
+
+		newClient, err := c.createXMPPClient(ctx, tempFile)
+		if err != nil {
+			c.logger.Error("Failed to create new XMPP client", zap.Int("attempt", attempt), zap.Error(err))
+			continue
+		}
+
+		if err := newClient.Connect(); err != nil {
 			c.logger.Error("Reconnection attempt failed",
 				zap.Int("attempt", attempt),
 				zap.Error(err),
 			)
+			if tempFile != nil {
+				_ = tempFile.Close()
+				_ = os.Remove(tempFile.Name())
+			}
 			continue
 		}
 
+		c.mu.Lock()
+		c.client = newClient
+		c.streamLogger = tempFile
+		c.mu.Unlock()
+
 		c.setConnected(true)
 		atomic.StoreInt32(&c.libraryConnected, 1)
+		c.smState = nil // reset SM state after full reconnect
 		c.logger.Info("Reconnection successful",
 			zap.Int("attempt", attempt),
 		)
@@ -827,19 +902,21 @@ func (c *Client) reconnect() error {
 }
 
 // handleConnectionEvent handles XMPP connection state changes from the xmpp library
-func (c *Client) handleConnectionEvent(event xmpp.Event) error {
-	// Track connection state based on events from the library
-	// The EventHandler is called when the connection state changes
-	// We use this to keep our internal flag in sync with the actual connection state
-
+func (c *Client) handleConnectionEvent(event *xmpp.Event) error {
 	desc := event.Description
 	streamErr := event.StreamError
 
-	// Log the event for debugging
 	c.logger.Debug("XMPP connection event",
 		zap.String("description", desc),
 		zap.String("stream_error", streamErr),
 	)
+
+	// Track Stream Management state for session resumption (XEP-0198)
+	if event.SMState.Id != "" {
+		c.smStateMu.Lock()
+		c.smState = &event.SMState
+		c.smStateMu.Unlock()
+	}
 
 	// If there's a stream error, the connection is broken
 	if streamErr != "" {
@@ -852,56 +929,24 @@ func (c *Client) handleConnectionEvent(event xmpp.Event) error {
 		return nil
 	}
 
-	// For other events, we mark as potentially connected
-	// The actual verification will happen in the health check
+	// For other events, mark as connected
 	atomic.StoreInt32(&c.libraryConnected, 1)
+	c.setConnected(true)
 
 	return nil
 }
 
 // isConnected returns connection status (thread-safe)
 func (c *Client) isConnected() bool {
-	// Check the internal flag first
 	if atomic.LoadInt32(&c.connected) != 1 {
 		return false
 	}
 
-	// If we have a real XMPP client connection, verify it's actually alive
-	// This ensures we detect actual disconnections even if the flag wasn't updated
-	if c.client != nil {
-		return c.checkConnectionHealth()
+	if c.client == nil {
+		return true
 	}
 
-	// For tests or when client is not yet created, just return the flag state
-	return true
-}
-
-// checkConnectionHealth performs a lightweight check to verify the connection is alive
-func (c *Client) checkConnectionHealth() bool {
-	// Use a timeout context to avoid blocking
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	// Send a minimal IQ get to check if the connection is alive
-	// We use service discovery info request as it's lightweight
-	iq := stanza.IQ{
-		Attrs: stanza.Attrs{
-			Type: stanza.IQTypeGet,
-			To:   c.config.XMPP.Server,
-		},
-		Payload: &stanza.DiscoInfo{},
-	}
-
-	// We don't need a response, just check if sending succeeds
-	_, err := c.client.SendIQ(ctx, &iq)
-	if err != nil {
-		// Connection is likely broken
-		c.logger.Debug("Connection health check failed", zap.Error(err))
-		atomic.StoreInt32(&c.connected, 0)
-		return false
-	}
-
-	return true
+	return atomic.LoadInt32(&c.libraryConnected) == 1
 }
 
 // setConnected sets connection status (thread-safe)
@@ -958,9 +1003,9 @@ func (c *Client) monitorXMPPStreamLogs(tempFile *os.File) {
 
 				// Log the new content
 				content := string(buf)
-				lines := strings.Split(content, "\n")
+				lines := strings.SplitSeq(content, "\n")
 
-				for _, line := range lines {
+				for line := range lines {
 					line = strings.TrimSpace(line)
 					if line != "" {
 						c.logger.Debug("XMPP stream", zap.String("data", line))

@@ -18,11 +18,10 @@ type Config struct {
 }
 
 type XMPPConfig struct {
-	JID       string `mapstructure:"jid"`
-	Password  string `mapstructure:"password"`
-	Server    string `mapstructure:"server"`
-	Resource  string `mapstructure:"resource"`
-	Reconnect bool   `mapstructure:"reconnect"`
+	JID      string `mapstructure:"jid"`
+	Password string `mapstructure:"password"`
+	Server   string `mapstructure:"server"`
+	Resource string `mapstructure:"resource"`
 }
 
 type APIConfig struct {
@@ -115,6 +114,9 @@ func Load(configPath string) (*Config, error) {
 	}
 	if config.Reconnection.Backoff == 0 {
 		config.Reconnection.Backoff = 5 * time.Second
+	}
+	if !config.Reconnection.Enabled {
+		config.Reconnection.Enabled = true
 	}
 	if config.FileTransfer.MaxSize == 0 {
 		config.FileTransfer.MaxSize = 10 * 1024 * 1024 // 10 MB default

@@ -3,11 +3,14 @@ package xmpp
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"jabber-bot/internal/config"
 	"jabber-bot/internal/models"
+
+	gosrc "gosrc.io/xmpp"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -284,4 +287,130 @@ func TestClient_Connect_Integration(t *testing.T) {
 
 	// Verify error type
 	require.Error(t, err)
+}
+
+func TestClient_ReconnectionDisabled(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{
+		XMPP: config.XMPPConfig{
+			JID:      "test@example.com",
+			Password: "password",
+			Server:   "localhost:5222",
+			Resource: "test",
+		},
+		Reconnection: config.ReconnectionConfig{
+			Enabled: false,
+		},
+	}
+
+	client := NewClient(cfg, logger)
+
+	// handleReconnection should return immediately when disabled
+	done := make(chan struct{})
+	go func() {
+		client.handleReconnection(context.Background())
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Expected - returned immediately
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("handleReconnection did not return immediately when reconnection is disabled")
+	}
+}
+
+func TestClient_ReconnectionEnabled(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{
+		XMPP: config.XMPPConfig{
+			JID:      "test@example.com",
+			Password: "password",
+			Server:   "localhost:5222",
+			Resource: "test",
+		},
+		Reconnection: config.ReconnectionConfig{
+			Enabled:     true,
+			MaxAttempts: 1,
+			Backoff:     10 * time.Millisecond,
+		},
+	}
+
+	client := NewClient(cfg, logger)
+
+	// Verify reconnection config is applied
+	assert.True(t, client.config.Reconnection.Enabled)
+	assert.Equal(t, 1, client.config.Reconnection.MaxAttempts)
+	assert.Equal(t, 10*time.Millisecond, client.config.Reconnection.Backoff)
+}
+
+func TestClient_HandleConnectionEvent_TracksSMState(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{
+		XMPP: config.XMPPConfig{
+			JID:      "test@example.com",
+			Password: "password",
+			Server:   "localhost:5222",
+			Resource: "test",
+		},
+	}
+	client := NewClient(cfg, logger)
+
+	smState := gosrc.SMState{
+		Id:      "sm-id-123",
+		Inbound: 42,
+	}
+
+	event := gosrc.Event{
+		State:       gosrc.SyncConnState{},
+		Description: "connected",
+		SMState:     smState,
+	}
+
+	err := client.handleConnectionEvent(&event)
+	assert.NoError(t, err)
+
+	// Verify SM state was tracked
+	client.smStateMu.RLock()
+	storedSM := client.smState
+	client.smStateMu.RUnlock()
+
+	require.NotNil(t, storedSM)
+	assert.Equal(t, "sm-id-123", storedSM.Id)
+	assert.Equal(t, uint(42), storedSM.Inbound)
+	assert.True(t, client.isConnected())
+}
+
+func TestClient_HandleConnectionEvent_StreamError(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{
+		XMPP: config.XMPPConfig{
+			JID:      "test@example.com",
+			Password: "password",
+			Server:   "localhost:5222",
+			Resource: "test",
+		},
+	}
+	client := NewClient(cfg, logger)
+
+	client.setConnected(true)
+
+	event := gosrc.Event{
+		State:       gosrc.SyncConnState{},
+		Description: "stream error",
+		StreamError: "conflict",
+	}
+
+	err := client.handleConnectionEvent(&event)
+	assert.NoError(t, err)
+
+	assert.False(t, client.isConnected())
+	assert.Equal(t, int32(0), atomic.LoadInt32(&client.libraryConnected))
+}
+
+func TestClient_DefaultConfig_HasReconnectionEnabled(t *testing.T) {
+	cfg := &config.Config{}
+
+	// Zero-value config has reconnection disabled
+	assert.False(t, cfg.Reconnection.Enabled, "zero-value config has reconnection disabled")
 }
