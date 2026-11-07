@@ -115,9 +115,6 @@ func Load(configPath string) (*Config, error) {
 	if config.Reconnection.Backoff == 0 {
 		config.Reconnection.Backoff = 5 * time.Second
 	}
-	if !config.Reconnection.Enabled {
-		config.Reconnection.Enabled = true
-	}
 	if config.FileTransfer.MaxSize == 0 {
 		config.FileTransfer.MaxSize = 10 * 1024 * 1024 // 10 MB default
 	}
