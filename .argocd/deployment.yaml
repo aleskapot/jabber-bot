@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: jabber-bot
-        image: aleskapot/jabber-bot:latest
+        image: aleskapot/jabber-bot:sha-e6c47e5
         ports:
         - containerPort: 8080
           protocol: TCP
