@@ -3,8 +3,12 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [ main, develop ]
+    paths-ignore:
+      - '.argocd/**'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '.argocd/**'
   release:
     types: [ published ]
 
