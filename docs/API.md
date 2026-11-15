@@ -202,12 +202,13 @@ webhook:
 
 - `400` - Bad Request (validation errors, invalid JSON)
 - `500` - Internal Server Error (XMPP errors, unexpected failures)
-- `503` - Service Unavailable (XMPP connection lost)
+- `503` - Service Unavailable (XMPP connection lost). The bot reconnects in the background but does not retry the request automatically; retry after the delay from the `Retry-After` header.
 
 ## Headers
 
 - `X-Request-ID`: Unique request identifier for tracking
 - `Content-Type`: application/json for all API responses
+- `Retry-After`: Seconds to wait before retrying a request that returned `503`
 
 ## Configuration
 

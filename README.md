@@ -229,6 +229,10 @@ reconnection:
   enabled: true
   max_attempts: 10
   backoff: "5s"
+  max_backoff: "60s"
+  watchdog_interval: "10s"
+  keepalive_interval: "30s"
+  connect_timeout: "10s"
 ```
 
 ## 🏃‍♂️ Build & Run

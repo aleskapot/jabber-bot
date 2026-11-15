@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -247,6 +248,87 @@ func TestHandleSendMessage_XMPPError(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+
+	manager.AssertExpectations(t)
+}
+
+func TestHandleSendMessage_ConnectionLost_Returns503(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{}
+	manager := &MockXMPPManager{}
+
+	manager.On("SendMessage", "test@example.com", "Hello, world!", "chat").
+		Return(fmt.Errorf("%w: write: broken pipe", xmpp.ErrConnectionLost))
+
+	app := fiber.New()
+	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
+
+	reqBody := models.SendMessageRequest{
+		To:   "test@example.com",
+		Body: "Hello, world!",
+		Type: "chat",
+	}
+
+	bodyBytes, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("POST", "/api/v1/send", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("logger", logger)
+		c.Locals("config", cfg)
+		c.Locals("manager", manager)
+		return c.Next()
+	})
+
+	app.Post("/api/v1/send", server.handleSendMessage)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	assert.Equal(t, "5", resp.Header.Get("Retry-After"))
+
+	var response models.ErrorResponse
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&response))
+	assert.False(t, response.Success)
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code)
+
+	manager.AssertExpectations(t)
+}
+
+func TestHandleSendMessage_NotConnected_Returns503(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	cfg := &config.Config{}
+	manager := &MockXMPPManager{}
+
+	manager.On("SendMessage", "test@example.com", "Hello, world!", "chat").
+		Return(fmt.Errorf("failed to send message: %w", xmpp.ErrNotConnected))
+
+	app := fiber.New()
+	server := &Server{app: app, config: cfg, logger: logger, manager: manager}
+
+	reqBody := models.SendMessageRequest{
+		To:   "test@example.com",
+		Body: "Hello, world!",
+		Type: "chat",
+	}
+
+	bodyBytes, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("POST", "/api/v1/send", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("logger", logger)
+		c.Locals("config", cfg)
+		c.Locals("manager", manager)
+		return c.Next()
+	})
+
+	app.Post("/api/v1/send", server.handleSendMessage)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	assert.Equal(t, "5", resp.Header.Get("Retry-After"))
 
 	manager.AssertExpectations(t)
 }

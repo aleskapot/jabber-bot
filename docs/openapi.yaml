@@ -803,14 +803,20 @@ components:
             error: Failed to send XMPP message
             code: 500
     ServiceUnavailable:
-      description: Service unavailable - XMPP connection lost
+      description: Service unavailable - XMPP connection lost. The bot reconnects in the background but does not retry the request automatically.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying the request
+          schema:
+            type: integer
+            example: 5
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
             success: false
-            error: XMPP connection not available
+            error: XMPP connection unavailable, retry later
             code: 503
     Forbidden:
       description: Forbidden - insufficient permissions

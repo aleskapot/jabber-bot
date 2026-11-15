@@ -292,6 +292,10 @@ reconnection:
   enabled: true
   max_attempts: 5
   backoff: "5s"
+  max_backoff: "60s"
+  watchdog_interval: "10s"
+  keepalive_interval: "30s"
+  connect_timeout: "10s"
 ```
 
 **Environment Variables:**
@@ -304,6 +308,13 @@ reconnection:
 - `JABBER_BOT_WEBHOOK_URL`
 - `JABBER_BOT_LOG_LEVEL`
 - `JABBER_BOT_LOG_OUTPUT`
+- `JABBER_BOT_RECONNECTION_ENABLED`
+- `JABBER_BOT_RECONNECTION_MAX_ATTEMPTS`
+- `JABBER_BOT_RECONNECTION_BACKOFF`
+- `JABBER_BOT_RECONNECTION_MAX_BACKOFF`
+- `JABBER_BOT_RECONNECTION_WATCHDOG_INTERVAL`
+- `JABBER_BOT_RECONNECTION_KEEPALIVE_INTERVAL`
+- `JABBER_BOT_RECONNECTION_CONNECT_TIMEOUT`
 
 ### Configuration Loading
 

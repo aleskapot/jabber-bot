@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -57,13 +58,7 @@ func (s *Server) handleSendMessage(c *fiber.Ctx) error {
 			zap.String("request_id", c.GetRespHeader("X-Request-ID")),
 		)
 
-		response := models.ErrorResponse{
-			Success: false,
-			Error:   "Failed to send message: " + err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}
-
-		return c.Status(fiber.StatusInternalServerError).JSON(response)
+		return s.writeXMPPError(c, "send message", err)
 	}
 
 	// Record metrics
@@ -73,7 +68,7 @@ func (s *Server) handleSendMessage(c *fiber.Ctx) error {
 	response := models.APIResponse{
 		Success: true,
 		Message: "Message sent successfully",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"to":          req.To,
 			"type":        req.Type,
 			"body_length": len(req.Body),
@@ -83,6 +78,26 @@ func (s *Server) handleSendMessage(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(response)
+}
+
+// writeXMPPError converts XMPP send failures into API responses. Connection
+// problems are reported as retryable 503 responses instead of 500.
+func (s *Server) writeXMPPError(c *fiber.Ctx, action string, err error) error {
+	if errors.Is(err, xmpp.ErrNotConnected) || errors.Is(err, xmpp.ErrConnectionLost) {
+		metrics.RecordXMPPUnavailable()
+		c.Set("Retry-After", "5")
+		return c.Status(fiber.StatusServiceUnavailable).JSON(models.ErrorResponse{
+			Success: false,
+			Error:   "XMPP connection unavailable, retry later",
+			Code:    fiber.StatusServiceUnavailable,
+		})
+	}
+
+	return c.Status(fiber.StatusInternalServerError).JSON(models.ErrorResponse{
+		Success: false,
+		Error:   fmt.Sprintf("Failed to %s: %s", action, err.Error()),
+		Code:    fiber.StatusInternalServerError,
+	})
 }
 
 // handleSendMUCMessage handles POST /api/v1/send-muc
@@ -126,13 +141,7 @@ func (s *Server) handleSendMUCMessage(c *fiber.Ctx) error {
 			zap.String("request_id", c.GetRespHeader("X-Request-ID")),
 		)
 
-		response := models.ErrorResponse{
-			Success: false,
-			Error:   "Failed to send MUC message: " + err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}
-
-		return c.Status(fiber.StatusInternalServerError).JSON(response)
+		return s.writeXMPPError(c, "send MUC message", err)
 	}
 
 	// Record metrics
@@ -142,7 +151,7 @@ func (s *Server) handleSendMUCMessage(c *fiber.Ctx) error {
 	response := models.APIResponse{
 		Success: true,
 		Message: "MUC message sent successfully",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"room":        req.Room,
 			"subject":     req.Subject,
 			"body_length": len(req.Body),
@@ -192,13 +201,7 @@ func (s *Server) handleSendChatState(c *fiber.Ctx) error {
 			zap.String("request_id", c.GetRespHeader("X-Request-ID")),
 		)
 
-		response := models.ErrorResponse{
-			Success: false,
-			Error:   "Failed to send chat state: " + err.Error(),
-			Code:    fiber.StatusInternalServerError,
-		}
-
-		return c.Status(fiber.StatusInternalServerError).JSON(response)
+		return s.writeXMPPError(c, "send chat state", err)
 	}
 
 	// Record metrics
@@ -207,7 +210,7 @@ func (s *Server) handleSendChatState(c *fiber.Ctx) error {
 	response := models.APIResponse{
 		Success: true,
 		Message: "Chat state sent successfully",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"to":         req.To,
 			"state":      req.State,
 			"sent_at":    time.Now().UTC().Format(time.RFC3339),
@@ -251,7 +254,7 @@ func (s *Server) handleWebhookStatus(c *fiber.Ctx) error {
 
 	// For now, return basic webhook status
 	// In a real implementation, you would get this from the webhook manager
-	webhookStatus := map[string]interface{}{
+	webhookStatus := map[string]any{
 		"running":      false, // Would come from webhook manager
 		"healthy":      false, // Would come from webhook manager
 		"queue_length": 0,     // Would come from webhook manager
@@ -637,7 +640,7 @@ func (s *Server) handleSendFile(c *fiber.Ctx) error {
 	}
 
 	if _, err = io.Copy(dst, src); err != nil {
-		dst.Close()
+		_ = dst.Close()
 		logger.Error("Failed to save file",
 			zap.Error(err),
 			zap.String("path", destPath),
@@ -684,15 +687,9 @@ func (s *Server) handleSendFile(c *fiber.Ctx) error {
 			)
 
 			// Clean up file on failure
-			os.Remove(destPath)
+			_ = os.Remove(destPath)
 
-			response := models.ErrorResponse{
-				Success: false,
-				Error:   "Failed to upload file: " + err.Error(),
-				Code:    fiber.StatusInternalServerError,
-			}
-
-			return c.Status(fiber.StatusInternalServerError).JSON(response)
+			return s.writeXMPPError(c, "upload file", err)
 		}
 
 		// Delete the local file after successful upload
@@ -735,15 +732,9 @@ func (s *Server) handleSendFile(c *fiber.Ctx) error {
 			)
 
 			// Clean up file on failure
-			os.Remove(destPath)
+			_ = os.Remove(destPath)
 
-			response := models.ErrorResponse{
-				Success: false,
-				Error:   "Failed to send file: " + err.Error(),
-				Code:    fiber.StatusInternalServerError,
-			}
-
-			return c.Status(fiber.StatusInternalServerError).JSON(response)
+			return s.writeXMPPError(c, "send file", err)
 		}
 	}
 
@@ -763,7 +754,7 @@ func (s *Server) handleSendFile(c *fiber.Ctx) error {
 	response := models.APIResponse{
 		Success: true,
 		Message: "File sent successfully",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"to":            to,
 			"description":   description,
 			"file":          fileInfo,

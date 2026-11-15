@@ -16,6 +16,9 @@ type Metrics struct {
 	WebhookDuration    *prometheus.HistogramVec
 	WebhookRetries     *prometheus.CounterVec
 	WebhookQueueLength prometheus.Gauge
+	XMPPDisconnects    prometheus.Counter
+	XMPPReconnects     prometheus.Counter
+	XMPPUnavailable    prometheus.Counter
 }
 
 var (
@@ -81,6 +84,24 @@ func newMetrics() *Metrics {
 				Help: "Current length of the webhook message queue",
 			},
 		),
+		XMPPDisconnects: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Name: "jabber_xmpp_disconnects_total",
+				Help: "Total number of detected XMPP connection losses",
+			},
+		),
+		XMPPReconnects: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Name: "jabber_xmpp_reconnects_total",
+				Help: "Total number of successful XMPP reconnections",
+			},
+		),
+		XMPPUnavailable: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Name: "jabber_xmpp_unavailable_total",
+				Help: "Total number of send requests rejected because XMPP was unavailable",
+			},
+		),
 	}
 
 	// Register all metrics with the custom registry
@@ -92,6 +113,9 @@ func newMetrics() *Metrics {
 		m.WebhookDuration,
 		m.WebhookRetries,
 		m.WebhookQueueLength,
+		m.XMPPDisconnects,
+		m.XMPPReconnects,
+		m.XMPPUnavailable,
 	)
 
 	return m
@@ -140,4 +164,19 @@ func RecordWebhookRetry(status string) {
 // SetWebhookQueueLength sets the current webhook queue length
 func SetWebhookQueueLength(length int) {
 	appMetrics.WebhookQueueLength.Set(float64(length))
+}
+
+// RecordXMPPDisconnect increments the XMPP disconnects counter
+func RecordXMPPDisconnect() {
+	appMetrics.XMPPDisconnects.Inc()
+}
+
+// RecordXMPPReconnect increments the successful XMPP reconnects counter
+func RecordXMPPReconnect() {
+	appMetrics.XMPPReconnects.Inc()
+}
+
+// RecordXMPPUnavailable increments the XMPP unavailable counter
+func RecordXMPPUnavailable() {
+	appMetrics.XMPPUnavailable.Inc()
 }

@@ -94,6 +94,10 @@ reconnection:
   enabled: true
   max_attempts: 10
   backoff: "5s"
+  max_backoff: "60s"
+  watchdog_interval: "10s"
+  keepalive_interval: "30s"
+  connect_timeout: "10s"
 ```
 
 ## Docker Deployment
@@ -210,6 +214,10 @@ data:
       enabled: true
       max_attempts: 5
       backoff: "5s"
+      max_backoff: "60s"
+      watchdog_interval: "10s"
+      keepalive_interval: "30s"
+      connect_timeout: "10s"
 ```
 
 ### Secret
@@ -425,8 +433,12 @@ sudo systemctl status jabber-bot
 | `JABBER_BOT_LOG_OUTPUT` | No | stdout | Log output (stdout, stderr, file) |
 | `JABBER_BOT_LOG_FILE_PATH` | No | - | Log file path (if output=file) |
 | `JABBER_BOT_RECONNECTION_ENABLED` | No | true | Enable reconnection |
-| `JABBER_BOT_RECONNECTION_MAX_ATTEMPTS` | No | 5 | Max reconnection attempts |
-| `JABBER_BOT_RECONNECTION_BACKOFF` | No | 5s | Reconnection backoff |
+| `JABBER_BOT_RECONNECTION_MAX_ATTEMPTS` | No | 5 | Max reconnection attempts per cycle |
+| `JABBER_BOT_RECONNECTION_BACKOFF` | No | 5s | Initial reconnection backoff |
+| `JABBER_BOT_RECONNECTION_MAX_BACKOFF` | No | 60s | Maximum reconnection backoff |
+| `JABBER_BOT_RECONNECTION_WATCHDOG_INTERVAL` | No | 10s | Interval for checking connection health |
+| `JABBER_BOT_RECONNECTION_KEEPALIVE_INTERVAL` | No | 30s | XMPP keepalive interval |
+| `JABBER_BOT_RECONNECTION_CONNECT_TIMEOUT` | No | 10s | Connection/dial timeout |
 
 ## Monitoring
 

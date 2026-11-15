@@ -46,9 +46,13 @@ type LoggingConfig struct {
 }
 
 type ReconnectionConfig struct {
-	Enabled     bool          `mapstructure:"enabled"`
-	MaxAttempts int           `mapstructure:"max_attempts"`
-	Backoff     time.Duration `mapstructure:"backoff"`
+	Enabled           bool          `mapstructure:"enabled"`
+	MaxAttempts       int           `mapstructure:"max_attempts"`
+	Backoff           time.Duration `mapstructure:"backoff"`
+	MaxBackoff        time.Duration `mapstructure:"max_backoff"`
+	WatchdogInterval  time.Duration `mapstructure:"watchdog_interval"`
+	KeepaliveInterval time.Duration `mapstructure:"keepalive_interval"`
+	ConnectTimeout    time.Duration `mapstructure:"connect_timeout"`
 }
 
 type FileTransferConfig struct {
@@ -114,6 +118,18 @@ func Load(configPath string) (*Config, error) {
 	}
 	if config.Reconnection.Backoff == 0 {
 		config.Reconnection.Backoff = 5 * time.Second
+	}
+	if config.Reconnection.MaxBackoff == 0 {
+		config.Reconnection.MaxBackoff = 60 * time.Second
+	}
+	if config.Reconnection.WatchdogInterval == 0 {
+		config.Reconnection.WatchdogInterval = 10 * time.Second
+	}
+	if config.Reconnection.KeepaliveInterval == 0 {
+		config.Reconnection.KeepaliveInterval = 30 * time.Second
+	}
+	if config.Reconnection.ConnectTimeout == 0 {
+		config.Reconnection.ConnectTimeout = 10 * time.Second
 	}
 	if config.FileTransfer.MaxSize == 0 {
 		config.FileTransfer.MaxSize = 10 * 1024 * 1024 // 10 MB default

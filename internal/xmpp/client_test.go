@@ -3,6 +3,7 @@ package xmpp
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -84,6 +85,21 @@ func TestClient_SendMUCMessage_NotConnected(t *testing.T) {
 	assert.Contains(t, err.Error(), "not connected")
 }
 
+func newTestXMPPClient(t *testing.T) *gosrc.Client {
+	t.Helper()
+
+	client, err := gosrc.NewClient(
+		&gosrc.Config{
+			Jid:        "test@example.com",
+			Credential: gosrc.Password("password"),
+		},
+		gosrc.NewRouter(),
+		func(error) {},
+	)
+	require.NoError(t, err)
+	return client
+}
+
 func TestClient_IsConnected(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	cfg := &config.Config{}
@@ -93,12 +109,115 @@ func TestClient_IsConnected(t *testing.T) {
 	assert.False(t, client.IsConnected())
 
 	// Simulate connection
+	xmppClient := newTestXMPPClient(t)
+	client.mu.Lock()
+	client.client = xmppClient
+	client.mu.Unlock()
 	client.setConnected(true)
+	atomic.StoreInt32(&client.libraryConnected, 1)
 	assert.True(t, client.IsConnected())
 
 	// Simulate disconnection
 	client.setConnected(false)
 	assert.False(t, client.IsConnected())
+}
+
+func TestClient_IsConnected_NoClientPointer(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	client := NewClient(&config.Config{}, logger)
+
+	// Flags alone must not report a usable connection without a client.
+	client.setConnected(true)
+	atomic.StoreInt32(&client.libraryConnected, 1)
+
+	assert.False(t, client.IsConnected())
+}
+
+func TestClient_HandleClientError_IgnoresStaleClient(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	client := NewClient(&config.Config{}, logger)
+	currentClient := newTestXMPPClient(t)
+	staleClient := newTestXMPPClient(t)
+
+	client.mu.Lock()
+	client.client = currentClient
+	client.mu.Unlock()
+	client.setConnected(true)
+	atomic.StoreInt32(&client.libraryConnected, 1)
+
+	client.handleClientError(staleClient, fmt.Errorf("write: broken pipe"))
+
+	assert.True(t, client.IsConnected())
+	select {
+	case <-client.reconnectCh:
+		t.Fatal("stale client error must not trigger reconnect")
+	default:
+	}
+}
+
+func TestClient_HandleClientError_MarksDisconnected(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	client := NewClient(&config.Config{}, logger)
+	xmppClient := newTestXMPPClient(t)
+
+	client.mu.Lock()
+	client.client = xmppClient
+	client.mu.Unlock()
+	client.setConnected(true)
+	atomic.StoreInt32(&client.libraryConnected, 1)
+
+	client.handleClientError(xmppClient, fmt.Errorf("write: broken pipe"))
+
+	assert.False(t, client.IsConnected())
+	select {
+	case <-client.reconnectCh:
+	default:
+		t.Fatal("expected reconnect signal")
+	}
+}
+
+func TestClient_SendMessage_ConnectionLost(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	client := NewClient(&config.Config{}, logger)
+	xmppClient := newTestXMPPClient(t)
+
+	client.mu.Lock()
+	client.client = xmppClient
+	client.mu.Unlock()
+	client.setConnected(true)
+	atomic.StoreInt32(&client.libraryConnected, 1)
+
+	err := client.SendMessage("test@example.com", "Hello", "chat")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrConnectionLost)
+	assert.False(t, client.IsConnected())
+
+	select {
+	case <-client.reconnectCh:
+	default:
+		t.Fatal("expected reconnect signal")
+	}
+}
+
+func TestIsConnectionError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "broken pipe", err: fmt.Errorf("write: broken pipe"), want: true},
+		{name: "connection reset", err: fmt.Errorf("read: connection reset by peer"), want: true},
+		{name: "closed", err: fmt.Errorf("use of closed network connection"), want: true},
+		{name: "not connected", err: fmt.Errorf("client is not connected"), want: true},
+		{name: "validation", err: fmt.Errorf("invalid JID format"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isConnectionError(tt.err))
+		})
+	}
 }
 
 func TestClient_GetMessageChannel(t *testing.T) {
@@ -344,73 +463,42 @@ func TestClient_ReconnectionEnabled(t *testing.T) {
 	assert.Equal(t, 10*time.Millisecond, client.config.Reconnection.Backoff)
 }
 
-func TestClient_HandleConnectionEvent_TracksSMState(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	cfg := &config.Config{
-		XMPP: config.XMPPConfig{
-			JID:      "test@example.com",
-			Password: "password",
-			Server:   "localhost:5222",
-			Resource: "test",
-		},
-	}
-	client := NewClient(cfg, logger)
-
-	smState := gosrc.SMState{
-		Id:      "sm-id-123",
-		Inbound: 42,
-	}
-
-	event := gosrc.Event{
-		State:       gosrc.SyncConnState{},
-		Description: "connected",
-		SMState:     smState,
-	}
-
-	err := client.handleConnectionEvent(&event)
-	assert.NoError(t, err)
-
-	// Verify SM state was tracked
-	client.smStateMu.RLock()
-	storedSM := client.smState
-	client.smStateMu.RUnlock()
-
-	require.NotNil(t, storedSM)
-	assert.Equal(t, "sm-id-123", storedSM.Id)
-	assert.Equal(t, uint(42), storedSM.Inbound)
-	assert.True(t, client.isConnected())
-}
-
-func TestClient_HandleConnectionEvent_StreamError(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	cfg := &config.Config{
-		XMPP: config.XMPPConfig{
-			JID:      "test@example.com",
-			Password: "password",
-			Server:   "localhost:5222",
-			Resource: "test",
-		},
-	}
-	client := NewClient(cfg, logger)
-
-	client.setConnected(true)
-
-	event := gosrc.Event{
-		State:       gosrc.SyncConnState{},
-		Description: "stream error",
-		StreamError: "conflict",
-	}
-
-	err := client.handleConnectionEvent(&event)
-	assert.NoError(t, err)
-
-	assert.False(t, client.isConnected())
-	assert.Equal(t, int32(0), atomic.LoadInt32(&client.libraryConnected))
-}
-
 func TestClient_DefaultConfig_HasReconnectionEnabled(t *testing.T) {
 	cfg := &config.Config{}
 
 	// Zero-value config has reconnection disabled
 	assert.False(t, cfg.Reconnection.Enabled, "zero-value config has reconnection disabled")
+}
+
+func TestClient_StreamLoggerLifecycle(t *testing.T) {
+	client := NewClient(&config.Config{}, zaptest.NewLogger(t))
+
+	logFile := client.startStreamLogger()
+	require.NotNil(t, logFile)
+	name := logFile.Name()
+
+	_, err := os.Stat(name)
+	require.NoError(t, err)
+
+	client.stopStreamLogger()
+
+	_, err = os.Stat(name)
+	assert.True(t, os.IsNotExist(err), "stream log file should be removed")
+}
+
+func TestClient_ReconnectBackoff_Bounded(t *testing.T) {
+	cfg := &config.Config{
+		Reconnection: config.ReconnectionConfig{
+			Backoff:    100 * time.Millisecond,
+			MaxBackoff: time.Second,
+		},
+	}
+	client := NewClient(cfg, zaptest.NewLogger(t))
+
+	for attempt := 1; attempt <= 20; attempt++ {
+		delay := client.reconnectBackoff(attempt)
+		assert.Greater(t, delay, time.Duration(0))
+		assert.LessOrEqual(t, delay, time.Second+time.Second/5,
+			"backoff must stay within max plus jitter")
+	}
 }

@@ -122,6 +122,10 @@ reconnection:
   enabled: true
   max_attempts: 3
   backoff: "2s"
+  max_backoff: "30s"
+  watchdog_interval: "5s"
+  keepalive_interval: "15s"
+  connect_timeout: "10s"
 ```
 
 ## Project Structure
