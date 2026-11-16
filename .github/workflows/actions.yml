@@ -132,15 +132,14 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Log in to private registry
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         registry: ${{ secrets.DOCKER_REGISTRY_URL }}
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
-        debug: true
 
     - name: Log in to Docker Hub
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -168,15 +167,15 @@ jobs:
           type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' }}          
 
     - name: Build and push to private registry
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: .
         push: true
-        tags: registry.skbis.ru/jabber-bot:latest
+        tags: ${{ secrets.DOCKER_REGISTRY_URL }}/jabber-bot:latest
         labels: ${{ steps.meta.outputs.labels }}
 
     - name: Build and push to Docker Hub
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: .
         push: true
