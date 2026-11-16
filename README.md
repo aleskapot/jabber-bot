@@ -678,6 +678,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-<div align="center">
+<div>
   <strong>🤖 Built with ❤️ for the XMPP community</strong>
 </div>
